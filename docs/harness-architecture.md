@@ -12,18 +12,18 @@
 | 레이어 | 위치 | 역할 |
 |---|---|---|
 | **Claude Code** | (외부) | LLM 실행 셸. tool 호출·에이전트 spawn·hook 실행. |
-| **Hooks** | `~/.claude/hooks/*.py` | tool 호출 전후 차단·라우팅·경계 강제. 전역(`~/.claude/settings.json`)에서만 등록. |
-| **Harness Core** | `~/.claude/harness/` | executor·plan_loop·impl_loop·core(StateDir/Flag)·notify·providers. |
-| **Agents** | `~/.claude/agents/*.md` | 역할별 전문 에이전트 정의 (architect, engineer, designer, validator, …). |
-| **Skills** | `~/.claude/commands/*.md` | 사용자 트리거 (qa, ux, quick, ralph, …). |
+| **Hooks** | `${CLAUDE_PLUGIN_ROOT}/hooks/*.py` | tool 호출 전후 차단·라우팅·경계 강제. 플러그인 내장 `hooks/hooks.json` 자동 로드 (개발 폴백: `~/.claude/settings.json` 의 hooks 섹션). |
+| **Harness Core** | `${CLAUDE_PLUGIN_ROOT}/harness/` | executor·plan_loop·impl_loop·core(StateDir/Flag)·notify·providers. |
+| **Agents** | `${CLAUDE_PLUGIN_ROOT}/agents/*.md` | 역할별 전문 에이전트 정의 (architect, engineer, designer, validator, …). |
+| **Skills** | `${CLAUDE_PLUGIN_ROOT}/commands/*.md` | 사용자 트리거 (qa, ux, quick, ralph, …). |
 | **State** | `.claude/harness-state/` | 세션·이슈별 플래그·active agent·escalate history. 프로젝트 루트별. |
-| **Whitelist** | `~/.claude/harness-projects.json` | 하네스 활성 프로젝트 목록. |
+| **Whitelist** | `~/.claude/harness-projects.json` | 하네스 활성 프로젝트 목록 (사용자 home 기준). |
 
 ---
 
 ## 2. 훅 흐름도
 
-전역 훅 목록은 `~/.claude/settings.json` 의 `hooks` 섹션에 등록되며, `setup-harness.sh` 코멘트 블록(line 6-27)에 카탈로그가 동기화되어 있다.
+훅 등록은 플러그인 내장 `hooks/hooks.json` 이 Claude Code 의 install 시 자동 로드된다. 개발 폴백 모드에선 `~/.claude/settings.json` 의 `hooks` 섹션 사용. 카탈로그는 `scripts/setup-project.sh` 코멘트와 본 문서 §2.1 표에 동기화되어 있다.
 
 ### 2.1 이벤트별 훅 체인
 
@@ -196,7 +196,7 @@ cwd가 화이트리스트 경로 또는 그 서브디렉토리 → True
 
 | 동작 | 방법 |
 |---|---|
-| 등록 | 프로젝트 루트에서 `bash ~/.claude/setup-harness.sh` |
+| 등록 | 프로젝트 루트에서 `bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-project.sh"` (개발 폴백: `bash ~/.claude/scripts/setup-project.sh`) |
 | 일괄 보기 | `harness-list` 스킬 |
 | 활성화 | `harness-enable` 스킬 |
 | 해제 | `harness-disable` 스킬 |
@@ -227,10 +227,10 @@ cwd가 화이트리스트 경로 또는 그 서브디렉토리 → True
 
 모든 하네스 인프라 변경은 `HARNESS-CHG-YYYYMMDD-NN` 식별자를 가진다.
 
-- `~/.claude/orchestration/changelog.md` — 변경 항목 + 동기 + 검증
+- `orchestration/changelog.md` — 변경 항목 + 동기 + 검증 (본 RWHarness repo)
 - 커밋 메시지 본문에 동일 식별자 포함
 - `docs/impl/` — 변경별 impl 계획 (architect 작성)
 
 본 문서(`harness-architecture.md`)와 `harness-spec.md`는 위 변경마다 관련 섹션 갱신 필요. 메모리 `feedback_doc_sync` 원칙 적용.
 
-> RWHarness 컨텍스트: 본 문서는 플러그인 배포판으로 마이그레이션 중이다. Phase 1에서 §1 (`~/.claude/...` 경로) → `${CLAUDE_PLUGIN_ROOT}/...` 추상화, §2.1 (settings.json hooks) → `hooks/hooks.json` 내장형으로 갱신 예정. 본 문서 자체의 변경은 RWHarness `orchestration/policies.md` Change-Type `spec` 으로 분류 → `orchestration/changelog.md` + `orchestration/rationale.md` 양쪽 항목 필수.
+> 본 문서의 변경은 `orchestration/policies.md` Change-Type `spec` 으로 분류 → `orchestration/changelog.md` + `orchestration/rationale.md` 양쪽 항목 필수. PR title 에 `[invariant-shift]` 토큰이 필요한 변경(§0 Core Invariant 약화)은 자동 게이트 외 추가 휴먼 거버넌스를 거친다.
