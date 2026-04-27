@@ -28,6 +28,7 @@
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | infra | Phase 4 [4.6] rename — `setup-project.sh` → `setup-rwh.sh` + `/init-project` → `/init-rwh` (12 파일 일괄 치환) | — |
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | infra | Phase 4 [4.7] repo public 전환 — gh repo edit (메타) | — |
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | docs | Phase 4 [4.8] Phase 4 ✅ 완료 정리 — README badge + Phase 표 + 설치 섹션 final | — |
+| `HARNESS-CHG-20260427-05` | 2026-04-27 | docs | Phase 4 [4.9] README 외부 사용자 진입 정비 — 의존성·첫 사용·트러블슈팅·발견·공유 섹션 | — |
 
 ---
 

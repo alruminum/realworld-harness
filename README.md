@@ -57,24 +57,81 @@ LLM 기반 에이전트가 똑똑해질수록, 단일 거대 에이전트에게 
 
 ## 설치
 
-`v0.1.0-alpha` released — public repo. 두 가지 설치 경로:
+`v0.1.0-alpha` — public repo, 두 가지 경로.
+
+### 의존성
+
+- Claude Code (플러그인 시스템 지원 버전)
+- Python 3.9+ (stdlib only — 추가 패키지 X)
+- (선택) `gh` CLI — GitHub 이슈 자동 생성에 사용 (qa 에이전트)
+- (선택) Pencil MCP — 디자인 시안 (designer 에이전트)
 
 ### A. 마켓플레이스 install (권장)
+
+**1) Claude Code 세션에서:**
 
 ```
 /plugin marketplace add alruminum/realworld-harness
 /plugin install realworld-harness
-# Claude Code 재시작 → hooks/hooks.json 자동 활성화
+```
+
+**2) Claude Code 재시작** — `hooks/hooks.json` 자동 로드.
+
+**3) 적용할 프로젝트 디렉토리에서:**
+
+```bash
+cd /path/to/your-project
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-rwh.sh"
 ```
+
+→ `.claude/harness.config.json` + `.claude/agent-config/` + `.git/hooks/pre-commit` 자동 설치 + 화이트리스트 등록.
 
 ### B. 개발 폴백 (clone 후 직접 사용)
 
 ```bash
 git clone https://github.com/alruminum/realworld-harness.git
 export CLAUDE_PLUGIN_ROOT="$(pwd)/realworld-harness"
+
+cd /path/to/your-project
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-rwh.sh"
 ```
+
+## 첫 사용 (5분 검증)
+
+설치 후 가장 빠른 검증 — `/quick` 으로 단일 버그픽스 루프:
+
+```bash
+# 테스트 시드 만들기
+mkdir -p src && printf 'function add(a, b) { return a - b; }\nmodule.exports = { add };\n' > src/util.js
+git add . && git commit -m "seed" --no-verify
+```
+
+```
+# Claude Code 세션:
+/quick add 함수가 잘못 계산함. 2+3=5 가 -1 나옴. 고쳐줘.
+```
+
+흐름 관찰: `qa` → `architect LIGHT_PLAN` → `engineer` → `validator` → `pr-reviewer LGTM` → `HARNESS_DONE`.
+
+전체 검증 (5루프) — [`docs/e2e-quickstart.md`](docs/e2e-quickstart.md).
+
+## 트러블슈팅
+
+| 증상 | 원인 / 해결 |
+|---|---|
+| 훅이 작동 안 함 (메인 Claude 가 그냥 src/ 수정) | 프로젝트가 화이트리스트에 미등록. `/harness-list` 로 확인, `/harness-enable` 로 등록 |
+| `setup-rwh.sh: No such file or directory` | `CLAUDE_PLUGIN_ROOT` env 미설정. 옵션 B 의 `export CLAUDE_PLUGIN_ROOT=...` 먼저 |
+| 게이트가 너무 엄격 (긴급 hotfix 등) | `SKIP_DOC_SYNC=1 git commit ...` 또는 commit msg 에 `Document-Exception: <10자 이상 사유>` |
+| 특정 프로젝트만 일시 비활성 | 프로젝트 루트에 `touch .no-harness` |
+| 영구 비활성 | `/harness-disable` 또는 `~/.claude/harness-projects.json` 에서 경로 제거 |
+
+## 외부 발견·공유
+
+본 repo 자체가 *self-hosted* 마켓플레이스(`marketplace.json` 매니페스트). 다른 사용자가 사용하려면:
+
+- **직접 install**: `/plugin marketplace add alruminum/realworld-harness` (위 §A)
+- **공유**: 본 README URL 또는 [v0.1.0-alpha release](https://github.com/alruminum/realworld-harness/releases/tag/v0.1.0-alpha) link 전달
+- **(예정) 커뮤니티 큐레이션 등재** — `awesome-claude-code` 또는 Anthropic 공식 큐레이션이 있다면 v1.0.0 시점에 등재 PR 검토
 
 자세한 검증 절차: [`docs/smoke-test-guide.md`](docs/smoke-test-guide.md), [`docs/e2e-quickstart.md`](docs/e2e-quickstart.md)
 
