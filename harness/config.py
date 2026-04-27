@@ -46,7 +46,7 @@ class HarnessConfig:
     build_command: str = ""  # 빌드/타입체크 (예: "npx tsc --noEmit")
     max_total_cost: float = 20.0
     token_budget: dict = field(default_factory=dict)
-    isolation: str = ""  # "" (없음) 또는 "worktree"
+    isolation: str = "worktree"  # "worktree" (기본, 권장) 또는 "" (비활성)
     second_reviewer: str = ""  # "gemini", "gpt", "" (비활성)
     second_reviewer_model: str = ""  # "gemini-2.5-flash", "gpt-4o-mini" 등
     # tier → model ID 매핑 (Core Invariant 표현)
@@ -109,7 +109,7 @@ def load_config(project_root: Path | None = None) -> HarnessConfig:
         build_command=data.get("build_command", ""),
         max_total_cost=float(data.get("max_total_cost", 20.0)),
         token_budget=data.get("token_budget", {}) if isinstance(data.get("token_budget", {}), dict) else {},
-        isolation=data.get("isolation", ""),
+        isolation=data.get("isolation", "worktree"),
         second_reviewer=data.get("second_reviewer", ""),
         second_reviewer_model=data.get("second_reviewer_model", ""),
         agent_tiers=merged_tiers,

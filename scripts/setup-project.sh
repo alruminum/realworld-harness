@@ -75,8 +75,16 @@ except Exception:
   print('0')
 " 2>/dev/null || echo "0")
   if [ "$HAS_ISOLATION" = "0" ]; then
-    echo "ℹ️  $CONFIG_FILE 이미 존재 — 유지"
-    echo "    💡 워크트리 격리를 켜려면 추가: \"isolation\": \"worktree\""
+    # isolation 필드가 없으면 기본값 "worktree" 로 자동 추가 (RealWorld Harness 기본 정책).
+    # 의도적으로 비활성하려면 본 스크립트 실행 후 "isolation": "" 로 수동 설정.
+    python3 - <<PY
+import json
+p = "$CONFIG_FILE"
+d = json.load(open(p))
+d["isolation"] = "worktree"
+json.dump(d, open(p, "w"), indent=2, ensure_ascii=False)
+PY
+    echo "📄 $CONFIG_FILE — isolation 필드 누락 → \"worktree\" 자동 추가"
   else
     echo "ℹ️  $CONFIG_FILE 이미 존재 — 유지 (isolation 필드 감지됨)"
   fi
