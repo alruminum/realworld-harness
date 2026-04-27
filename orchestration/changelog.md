@@ -85,16 +85,28 @@
 
 **Type**: spec
 
-**Sub-commits 예정**:
-- `[2.1]` Core Invariant `harness-spec.md §0` 신규 (proposals.md 제안 B)
-- `[2.2]` README 메인 카피 — "Production-grade Agent Workflow Engine" (제안 A)
-- `[2.3]` hardcarry/softcarry bypass 로직 완전 제거 (Phase 1 잔존 TODO, 옵션 A)
-- `[2.4]` `agent_tiers` 도입 (proposals.md 제안 C, harness.config.json 스키마)
-- `[2.5]` `scripts/check_doc_sync.py` Python 자동 게이트 (proposals.md §6 통합)
-- `[2.6]` `scripts/hooks/pre-commit.sh` + `hooks/commit-gate.py` 확장
-- `[2.7]` `.github/PULL_REQUEST_TEMPLATE.md` (Document Sync 체크리스트)
-- `[2.8]` `scripts/setup-project.sh` PLUGIN_ROOT 적응
-- `[2.9]` Phase 2 종료 + 검증
+**Sub-commits (완료)**:
+- `[2.1]` `c1021a0` Core Invariant `harness-spec.md §0` 신규 (`+88/-2`)
+- `[2.2]` `4796a09` README 메인 카피 — "Production-grade Agent Workflow Engine" (`+68/-22`)
+- `[2.3]` `10f4171` hardcarry/softcarry bypass 로직 완전 제거 (`+2/-10`)
+- `[2.4]` `a554af0` `agent_tiers` 도입 — config.py + docs/agent-tiers.md (`+192`)
+- `[2.5]` `26fdf4f` `scripts/check_doc_sync.py` Python 자동 게이트 (`+219`, 단위 테스트 11/11)
+- `[2.6]` `394dbf5` `scripts/hooks/pre-commit.sh` + `hooks/commit-gate.py` Gate 4 (`+51`)
+- `[2.7]` `d4cdad5` `.github/PULL_REQUEST_TEMPLATE.md` (`+61`)
+- `[2.8]` `e8bb7d0` `scripts/setup-project.sh` PLUGIN_ROOT 적응 + 거버넌스 pre-commit 자동 설치 (`+46/-44`)
+- `[2.9]` (본 commit) Phase 2 종료 + 셀프 검증
+
+**Phase 2 검증 결과**:
+- ✓ Core Invariant — `harness-spec.md §0` 4항목 + `[invariant-shift]` PR 토큰 룰
+- ✓ README 카피 강화 — Phase 진행 상태 갱신, 트렌드 비교표 추가
+- ✓ bypass 로직 — hooks/agent-gate.py + agent-boundary.py 에 hardcarry/softcarry 잔존 0건 (.no-harness 마커는 일반 옵션으로 보존)
+- ✓ agent_tiers — 12 에이전트 → high/mid/low 매핑, 폴백 동작 검증 (architect/engineer/qa/unknown 4 케이스)
+- ✓ check_doc_sync.py — Change-Type 5종 분류 단위 테스트 11/11, Document-Exception 스코핑 (사유 ≥ 10자)
+- ✓ commit-gate.py Gate 4 — cwd 의 scripts/check_doc_sync.py 자동 호출 (없으면 skip)
+- ✓ pre-commit.sh — git hook 진입점, SKIP_DOC_SYNC env 우회
+- ✓ PR 템플릿 — Task-ID + Change-Type + Document Sync 체크리스트 + Document-Exception 섹션
+- ✓ setup-project.sh — HARNESS_ROOT 변수 도입, PLUGIN_ROOT 폴백, BATS rule-audit → 거버넌스 pre-commit 자동 설치
+- ✓ **셀프 게이트 검증** — 본 sub-commit 자체가 spec 변경(changelog + rationale 갱신)이며 .git/hooks/pre-commit 활성화 후 게이트 통과 확인
 
 **Linked**:
 - `docs/proposals.md §3` 제안 A/B/C

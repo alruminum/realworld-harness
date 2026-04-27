@@ -155,10 +155,38 @@ Phase 1(코어 마이그레이션) 종료(`HARNESS-CHG-20260427-02`) 후 Phase 2
 
 ### Follow-Up
 
-- 9 sub-commit 진행 후 Phase 3 진입 (clean install smoke test → v1.0.0 → 마켓플레이스 PR)
+- 9 sub-commit 진행 후 Phase 3 진입 (clean install smoke test → v1.0.0 → 마켓플레이스 PR) **— 완료 [2.9]**
 - `agent_tiers` 의 환경별 분기(개발/배포)는 v1.1 이후 (현재는 단일 매핑)
 - `check_doc_sync.py` 의 GitHub Actions 통합은 Phase 3 또는 v1.1
 - Core Invariant 자체의 변경은 PR title에 `[invariant-shift]` 토큰 + 별도 거버넌스 (rationale.md 4섹션 강제)
+
+### Phase 2 종료 (2026-04-27)
+
+**달성**:
+- 핵심 철학 명문화 (`harness-spec.md §0` Core Invariant 4항목)
+- README 메인 카피 — "Production-grade Agent Workflow Engine"
+- `agent_tiers` 추상화 — 모델 진화 흡수 메커니즘 (12 에이전트 → 3 tier → 모델 ID)
+- 거버넌스 자동 게이트 3중 강제:
+  1. `.git/hooks/pre-commit` ← `scripts/hooks/pre-commit.sh`
+  2. Claude Code `hooks/commit-gate.py` Gate 4
+  3. GitHub PR 템플릿 (휴먼 검토 + 향후 GitHub Actions)
+- Phase 1 잔존 TODO 모두 해결 (hardcarry/softcarry 완전 제거, .no-harness 마커는 일반 옵션 보존)
+
+**Phase 3 인계 (다음 Task-ID)**:
+- 별도 머신 또는 컨테이너에서 clean install smoke test
+  - `/plugin marketplace add alruminum/realworld-harness` → `/plugin install`
+  - `${CLAUDE_PLUGIN_ROOT}` 환경변수 자동 set 검증
+  - `bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-project.sh"` 신규 프로젝트 적용
+- 5루프 E2E 검증 (기획-UX / 설계 / 구현 / 디자인 / 버그픽스)
+- BATS → pytest 잔여 마이그레이션 (P1, 차단 요소 X)
+- v1.0.0 태그 + `CHANGELOG.md` 정식 릴리즈
+- 마켓플레이스 PR — public 전환 결정 (현재 private)
+- `setup-project.sh` 에 플러그인 모드 분기 추가 (글로벌 settings.json hooks 등록 skip — Phase 2.8 미처리분)
+- GitHub Actions workflow — `scripts/check_doc_sync.py base..head` (PR 단계 자동화)
+
+**남은 의식적 부채**:
+- `setup-project.sh` 가 플러그인 모드에서 사용자 ~/.claude/settings.json 의 hooks 섹션을 *여전히* 수정 — 이는 `if [ -z "$CLAUDE_PLUGIN_ROOT" ]` 분기로 감싸야 하나 큰 변경이라 Phase 3 또는 별도 sub-commit으로 미룸
+- `setup-project.sh` 의 `gh api` 호출(마일스톤·레이블 자동 생성)은 RWHarness 거버넌스 룰과 직접 연관 없음 — 분리 검토 필요 (v1.1)
 
 ---
 
