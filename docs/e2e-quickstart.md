@@ -17,17 +17,32 @@
 # Claude Code 재시작
 ```
 
-**옵션 B — 개발 폴백 (현재 ~/.claude 사용자)**
+**옵션 B — RWHarness repo 직접 사용 (마켓플레이스 install 전 검증)**
 ```bash
-# 별도 작업 없음 — ~/.claude 가 이미 활성화돼있으면 그대로
-ls ~/.claude/hooks/   # 23개 .py 확인되면 OK
+# RWHarness 가 이미 clone 된 위치를 PLUGIN_ROOT 로 사용
+export RW=/path/to/realworld-harness   # 본인 환경에 맞게
+export CLAUDE_PLUGIN_ROOT="$RW"
+ls "$RW/hooks/"   # 23개 .py 확인되면 OK
+```
+
+**옵션 C — 기존 ~/.claude 폴백 (RWHarness 마이그레이션 source 사용자)**
+```bash
+# ~/.claude 의 진짜 init 스크립트 이름은 setup-harness.sh (RWHarness 에선 setup-project.sh)
+ls ~/.claude/hooks/   # 활성 확인
+# 단, ~/.claude/scripts/setup-project.sh 가 없으니 옵션 B 사용 권장
 ```
 
 테스트 프로젝트 생성:
 ```bash
 mkdir -p /tmp/rw-quickstart && cd /tmp/rw-quickstart
 git init -q
-bash "${CLAUDE_PLUGIN_ROOT:-${HOME}/.claude}/scripts/setup-project.sh"
+
+# 옵션 B 또는 C: 명시적 경로
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-project.sh"
+
+# 또는 한 줄 (옵션 B):
+CLAUDE_PLUGIN_ROOT=/path/to/realworld-harness \
+  bash /path/to/realworld-harness/scripts/setup-project.sh
 ```
 
 검증: `.claude/harness.config.json` + `.git/hooks/pre-commit` 생성됨.
