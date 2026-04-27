@@ -277,6 +277,16 @@ Phase 0~3 완료 (총 27 sub-commits, `HARNESS-CHG-20260427-01` ~ `04`). 코어 
   * BATS → pytest 잔여 마이그레이션
 - v1.0.0 마일스톤: 5루프 전체 E2E 실측 + Anthropic 공식 또는 커뮤니티 큐레이션 (있다면) 등재
 
+### Phase 4 sub-commits 진행 보강 (2026-04-27 추가)
+
+| sub-commit | 결정 | 근거 |
+|---|---|---|
+| `[4.3]` historical 자료 4개 삭제 (migration-plan / plan-plugin-distribution / proposals / analysis-current-harness) | 외부 사용자(마켓플레이스 install 후) 의 docs/ 둘러보기에 노이즈가 큼. 결과는 모두 정본 문서에 반영됐고 historical 자료의 인풋 가치는 git log + v0.1.0-alpha tag archive 로 충분. | 유저 명시 (2026-04-27): "Migration Plan 이런것도 이제 다 했으니 없애도 될거같고" |
+| `[4.4]` git tag `v0.1.0-alpha` push | annotated tag, baseline=`cb5e89d` (4 historical 파일 *포함* 한 시점) — release archive 가 그 시점 historical 사진을 보존. | tag/release 는 private repo 에서도 가능, public 전환을 마지막에 두면 외부 노출 시점 통제 |
+| `[4.5]` GitHub Release 생성 (예정) | `gh release create v0.1.0-alpha --notes-from-changelog` — release 페이지 = CHANGELOG 의 v0.1.0-alpha 섹션 | 사용자 install 진입점 명확화 |
+| `[4.6]` public 전환 (예정) | `gh repo edit alruminum/realworld-harness --visibility public --accept-visibility-change-consequences` — 외부 노출 시작 | 유저 명시 승인 후 진행 |
+| `[4.7]` 정리 commit (예정) | Phase 4 ✅ 완료 표기 + 실제 release URL 반영 | 종료 마커 |
+
 ---
 
 > 새 항목은 위 형식으로 추가. Task-ID 헤더는 H2(`##`), 4섹션은 H3(`###`).

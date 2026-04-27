@@ -84,13 +84,15 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-project.sh"
 |---|---|
 | [`docs/harness-spec.md`](docs/harness-spec.md) | 헌법 (§0 Core Invariant + 게이트·불변식·비목표) |
 | [`docs/harness-architecture.md`](docs/harness-architecture.md) | 기술 구현 (훅·핸드오프·세션·경계) |
-| [`docs/proposals.md`](docs/proposals.md) | 배포 방향 제안 + AI 트렌드 정합성 + 거버넌스 통합 |
-| [`docs/migration-plan.md`](docs/migration-plan.md) | Phase 1 ~/.claude → 플러그인 마이그레이션 계획 + 인벤토리 |
-| [`docs/analysis-current-harness.md`](docs/analysis-current-harness.md) | ~/.claude 시스템 도면 (34훅 / 14에이전트 / 18스킬) |
-| [`docs/plan-plugin-distribution.md`](docs/plan-plugin-distribution.md) | 정본 설계 문서 (2026-04-21 갱신) |
+| [`docs/agent-tiers.md`](docs/agent-tiers.md) | agent_tiers 매핑 정책 (모델 진화 흡수 메커니즘) |
+| [`docs/smoke-test-guide.md`](docs/smoke-test-guide.md) | clean install 자동 검증 + 외부 머신/컨테이너 가이드 |
+| [`docs/e2e-quickstart.md`](docs/e2e-quickstart.md) | 30분 E2E 검증 경로 (`/quick` 루프 + 거버넌스 게이트 + agent_tiers) |
+| [`docs/e2e-test-scenarios.md`](docs/e2e-test-scenarios.md) | 5루프 전체 E2E 시나리오 + 통과 기준 |
 | [`orchestration/policies.md`](orchestration/policies.md) | Task-ID + Change-Type 5종 + Document-Exception 룰 |
 | [`orchestration/changelog.md`](orchestration/changelog.md) | WHAT 로그 (모든 Task-ID 변경 기록) |
 | [`orchestration/rationale.md`](orchestration/rationale.md) | WHY 로그 (Rationale / Alternatives / Decision / Follow-Up) |
+
+> v0.1.0-alpha 이전의 마이그레이션 시점 자료(`migration-plan`, `analysis-current-harness`, `proposals`, `plan-plugin-distribution`)는 git log + `v0.1.0-alpha` tag 의 release archive 에 보존돼있다. 결과는 모두 위 정본 문서에 반영됨.
 
 ## License
 
