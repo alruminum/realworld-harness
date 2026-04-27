@@ -73,6 +73,26 @@ def main():
     if not re.search(r"git\s+commit", cmd):
         sys.exit(0)
 
+    # ── Gate 4: 거버넌스 Document Sync 게이트 ──────────────────────────
+    # 현재 프로젝트에 scripts/check_doc_sync.py 가 있으면 실행 (RWHarness 거버넌스).
+    # 없으면 skip — 다른 프로젝트엔 영향 없음.
+    _doc_sync = os.path.join(os.getcwd(), "scripts", "check_doc_sync.py")
+    if os.path.isfile(_doc_sync) and os.environ.get("HARNESS_INTERNAL") != "1":
+        try:
+            _r = subprocess.run(
+                ["python3", _doc_sync],
+                capture_output=True, text=True, timeout=15
+            )
+            if _r.returncode != 0:
+                deny(
+                    "❌ [hooks/commit-gate.py] Document Sync 게이트 실패\n\n"
+                    + (_r.stdout or "") + (_r.stderr or "")
+                )
+        except subprocess.TimeoutExpired:
+            pass  # timeout은 차단 사유 아님 (스크립트 자체 문제 가능성)
+        except Exception:
+            pass
+
     # staged 파일에 src/ 가 있는지 확인
     try:
         result = subprocess.run(
