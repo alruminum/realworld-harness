@@ -1,0 +1,2387 @@
+"""
+core.py — 하네스 핵심 인프라 (flags.sh + markers.sh + utils.sh 대체).
+Python 3.9+ stdlib only.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+try:
+    from .config import HarnessConfig, load_config
+except ImportError:
+    from config import HarnessConfig, load_config
+
+# ═══════════════════════════════════════════════════════════════════════
+# 1. StateDir — 상태 파일 관리 (init_state_dir + flag_touch/rm/exists)
+# ═══════════════════════════════════════════════════════════════════════
+
+class StateDir:
+    """flags.sh의 flag_touch/flag_rm/flag_exists + init_state_dir 대체.
+    Phase 3: HARNESS_SESSION_ID 환경변수가 있으면 세션 스코프 flags_dir 사용.
+    """
+
+    def __init__(self, project_root: Path, prefix: str, issue_num: str = "") -> None:
+        self.project_root = project_root
+        self.prefix = prefix
+        self.issue_num = issue_num
+        self.path = project_root / ".claude" / "harness-state"
+        self.path.mkdir(parents=True, exist_ok=True)
+        # Phase 3: 세션 스코프 flags_dir — .sessions/{sid}/flags/{prefix}_{issue}/
+        _session_id = os.environ.get("HARNESS_SESSION_ID", "")
+        if _session_id:
+            try:
+                _hooks_dir = Path.home() / ".claude" / "hooks"
+                if str(_hooks_dir) not in sys.path:
+                    sys.path.insert(0, str(_hooks_dir))
+                import session_state as _ss  # type: ignore
+                self.flags_dir = _ss.session_flags_dir(_session_id, prefix, issue_num, project_root)
+            except Exception:
+                self.flags_dir = self._legacy_flags_dir(prefix, issue_num)
+        else:
+            self.flags_dir = self._legacy_flags_dir(prefix, issue_num)
+        self.flags_dir.mkdir(parents=True, exist_ok=True)
+
+    def _legacy_flags_dir(self, prefix: str, issue_num: str) -> Path:
+        """세션 ID 없을 때 폴백 — 전역 .flags/ 사용 (하위호환)."""
+        if issue_num:
+            return self.path / ".flags" / f"{prefix}_{issue_num}"
+        return self.path / ".flags"
+
+    def _flag_path(self, name: str) -> Path:
+        return self.flags_dir / f"{self.prefix}_{name}"
+
+    def flag_touch(self, name: str) -> None:
+        self._flag_path(name).touch()
+
+    def flag_rm(self, name: str) -> None:
+        self._flag_path(name).unlink(missing_ok=True)
+
+    def flag_exists(self, name: str) -> bool:
+        return self._flag_path(name).exists()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 1.5. ESCALATE history — 동일 impl이 여러 run에 걸쳐 ESCALATE될 때
+#      architect SPEC_GAP을 자동 호출해 impl 보강을 유도.
+# ═══════════════════════════════════════════════════════════════════════
+
+ESCALATE_AUTO_SPEC_GAP_THRESHOLD = 2  # 누적 N회 ESCALATE면 다음 run 진입 시 SPEC_GAP
+
+
+def _escalate_history_path(state_dir: "StateDir") -> Path:
+    return state_dir.path / f"{state_dir.prefix}_escalate_history.json"
+
+
+def _read_escalate_history(state_dir: "StateDir") -> Dict[str, Any]:
+    p = _escalate_history_path(state_dir)
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _write_escalate_history(state_dir: "StateDir", data: Dict[str, Any]) -> None:
+    p = _escalate_history_path(state_dir)
+    try:
+        p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def record_escalate(state_dir: "StateDir", impl_path: str, fail_type: str) -> int:
+    """impl_path가 ESCALATE된 사실을 기록. 반환: 누적 ESCALATE 카운트."""
+    if not impl_path:
+        return 0
+    data = _read_escalate_history(state_dir)
+    entry = data.get(impl_path) or {"count": 0, "last_ts": 0, "fail_types": []}
+    entry["count"] = int(entry.get("count", 0)) + 1
+    entry["last_ts"] = int(time.time())
+    fts = list(entry.get("fail_types") or [])
+    if fail_type:
+        fts.append(fail_type)
+    entry["fail_types"] = fts[-5:]  # 최근 5개만
+    data[impl_path] = entry
+    _write_escalate_history(state_dir, data)
+    return entry["count"]
+
+
+def get_escalate_count(state_dir: "StateDir", impl_path: str) -> int:
+    if not impl_path:
+        return 0
+    data = _read_escalate_history(state_dir)
+    entry = data.get(impl_path) or {}
+    return int(entry.get("count", 0))
+
+
+def get_escalate_fail_types(state_dir: "StateDir", impl_path: str) -> List[str]:
+    if not impl_path:
+        return []
+    data = _read_escalate_history(state_dir)
+    entry = data.get(impl_path) or {}
+    return list(entry.get("fail_types") or [])
+
+
+def clear_escalate_count(state_dir: "StateDir", impl_path: str) -> None:
+    if not impl_path:
+        return
+    data = _read_escalate_history(state_dir)
+    if impl_path in data:
+        del data[impl_path]
+        _write_escalate_history(state_dir, data)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 2. Flag enum — flags.sh 상수 1:1 매핑
+# ═══════════════════════════════════════════════════════════════════════
+
+class Flag(str, Enum):
+    """flags.sh의 FLAG_* 상수와 1:1 대응. 값은 플래그 파일 이름 접미사."""
+    # ── 하네스 제어 플래그 ──
+    HARNESS_ACTIVE = "harness_active"
+    HARNESS_KILL = "harness_kill"
+    # ── 검증 단계 플래그 ──
+    PLAN_VALIDATION_PASSED = "plan_validation_passed"
+    TEST_ENGINEER_PASSED = "test_engineer_passed"
+    VALIDATOR_B_PASSED = "validator_b_passed"
+    PR_REVIEWER_LGTM = "pr_reviewer_lgtm"
+    SECURITY_REVIEW_PASSED = "security_review_passed"
+    BUGFIX_VALIDATION_PASSED = "bugfix_validation_passed"
+    # ── 설계/디자인 플래그 ──
+    LIGHT_PLAN_READY = "light_plan_ready"
+    DESIGNER_RAN = "designer_ran"
+    DESIGN_CRITIC_PASSED = "design_critic_passed"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 3. Marker enum — markers.sh KNOWN_MARKERS 1:1 매핑
+# ═══════════════════════════════════════════════════════════════════════
+
+class Marker(str, Enum):
+    """markers.sh의 KNOWN_MARKERS 배열과 1:1 대응."""
+    # validator
+    PASS = "PASS"
+    FAIL = "FAIL"
+    SPEC_MISSING = "SPEC_MISSING"
+    PLAN_VALIDATION_PASS = "PLAN_VALIDATION_PASS"
+    PLAN_VALIDATION_FAIL = "PLAN_VALIDATION_FAIL"
+    DESIGN_REVIEW_PASS = "DESIGN_REVIEW_PASS"
+    DESIGN_REVIEW_FAIL = "DESIGN_REVIEW_FAIL"
+    BUGFIX_PASS = "BUGFIX_PASS"
+    BUGFIX_FAIL = "BUGFIX_FAIL"
+    # test-engineer
+    TESTS_PASS = "TESTS_PASS"
+    TESTS_FAIL = "TESTS_FAIL"
+    # pr-reviewer
+    LGTM = "LGTM"
+    CHANGES_REQUESTED = "CHANGES_REQUESTED"
+    # security-reviewer
+    SECURE = "SECURE"
+    VULNERABILITIES_FOUND = "VULNERABILITIES_FOUND"
+    # architect
+    LIGHT_PLAN_READY = "LIGHT_PLAN_READY"
+    READY_FOR_IMPL = "READY_FOR_IMPL"
+    SPEC_GAP_FOUND = "SPEC_GAP_FOUND"
+    SPEC_GAP_RESOLVED = "SPEC_GAP_RESOLVED"
+    PRODUCT_PLANNER_ESCALATION_NEEDED = "PRODUCT_PLANNER_ESCALATION_NEEDED"
+    TECH_CONSTRAINT_CONFLICT = "TECH_CONSTRAINT_CONFLICT"
+    # product-planner
+    PRODUCT_PLAN_READY = "PRODUCT_PLAN_READY"
+    PRODUCT_PLAN_UPDATED = "PRODUCT_PLAN_UPDATED"
+    # design-critic
+    PICK = "PICK"
+    ITERATE = "ITERATE"
+    ESCALATE = "ESCALATE"
+    VARIANTS_APPROVED = "VARIANTS_APPROVED"
+    VARIANTS_ALL_REJECTED = "VARIANTS_ALL_REJECTED"
+    # harness control
+    HARNESS_DONE = "HARNESS_DONE"
+    IMPLEMENTATION_ESCALATE = "IMPLEMENTATION_ESCALATE"
+    MERGE_CONFLICT_ESCALATE = "MERGE_CONFLICT_ESCALATE"
+    # product-planner (정보 부족 에스컬레이션)
+    CLARITY_INSUFFICIENT = "CLARITY_INSUFFICIENT"
+    # test-engineer TDD
+    TESTS_WRITTEN = "TESTS_WRITTEN"
+    # ux-architect
+    UX_FLOW_READY = "UX_FLOW_READY"
+    UX_FLOW_ESCALATE = "UX_FLOW_ESCALATE"
+    UX_REFINE_READY = "UX_REFINE_READY"
+    # validator UX Validation
+    UX_REVIEW_PASS = "UX_REVIEW_PASS"
+    UX_REVIEW_FAIL = "UX_REVIEW_FAIL"
+    UX_REVIEW_ESCALATE = "UX_REVIEW_ESCALATE"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 3.5 HUD — 실시간 진행 상태 표시 + JSON 파일 저장
+# ═══════════════════════════════════════════════════════════════════════
+
+class HUD:
+    """하네스 실행 중 진행 상태를 시각적으로 표시하고 JSON으로 저장.
+
+    - stdout에 진행 바 블록 출력 (Bash 출력 내)
+    - .claude/harness-state/{prefix}_hud.json에 실시간 상태 저장
+      (/harness-monitor에서 watch 가능)
+    """
+
+    PREAMBLE_AGENTS = ["architect", "plan-validation"]
+    DEPTH_AGENTS = {
+        "simple": ["engineer", "pr-reviewer", "merge"],
+        "std": ["test-engineer", "engineer", "validator", "pr-reviewer", "merge"],
+        "deep": ["test-engineer", "engineer", "validator", "security-reviewer", "pr-reviewer", "merge"],
+        "plan": ["product-planner", "ux-architect", "ux-validation"],
+    }
+
+    def __init__(
+        self,
+        depth: str,
+        prefix: str,
+        issue_num: str | int,
+        max_attempts: int,
+        budget: float,
+        state_dir: Optional["StateDir"] = None,
+    ) -> None:
+        self.depth = depth
+        self.prefix = prefix
+        self.issue = str(issue_num)
+        self.max_attempts = max_attempts
+        self.budget = budget
+        self.start_time = time.time()
+        self.attempt = 0
+        self.total_cost = 0.0
+
+        if depth == "auto":
+            # run_impl 진입: preamble만 — depth 확정 후 set_depth()로 확장
+            self.agents = list(self.PREAMBLE_AGENTS)
+        elif depth == "plan":
+            self.agents = list(self.DEPTH_AGENTS["plan"])
+        else:
+            self.agents = list(self.DEPTH_AGENTS.get(depth, self.DEPTH_AGENTS["std"]))
+        self.agent_status: Dict[str, Dict[str, Any]] = {
+            a: {"status": "pending", "elapsed": 0, "cost": 0.0}
+            for a in self.agents
+        }
+
+        self._hud_path: Optional[Path] = None
+        if state_dir:
+            self._hud_path = state_dir.path / f".{prefix}_hud"
+
+        # 이벤트 파일 초기화 + 루프 시작 구분선
+        if self._hud_path:
+            ep = self._hud_path.parent / f".{prefix}_events"
+            try:
+                ep.write_text("")  # truncate
+            except OSError:
+                pass
+        mode = "plan" if depth == "plan" else "impl"
+        issue_str = f" #{issue_num}" if issue_num else ""
+        self._event(f"{'═' * 50}")
+        self._event(f"루프 시작 | mode={mode} depth={depth}{issue_str}")
+
+    def set_depth(self, depth: str) -> None:
+        """depth 확정 후 에이전트 목록 확장."""
+        self.depth = depth
+        new_agents = self.DEPTH_AGENTS.get(depth, self.DEPTH_AGENTS["std"])
+        for a in new_agents:
+            if a not in self.agent_status:
+                self.agents.append(a)
+                self.agent_status[a] = {"status": "pending", "elapsed": 0, "cost": 0.0}
+        self._write_json()
+
+    def set_attempt(self, n: int) -> None:
+        self.attempt = n
+
+    def _event(self, msg: str) -> None:
+        """이벤트 로그 파일에 한 줄 append (tail -f 용)."""
+        if not hasattr(self, "_event_path"):
+            if self._hud_path:
+                self._event_path = self._hud_path.parent / f".{self.prefix}_events"
+            else:
+                self._event_path = None
+        if self._event_path:
+            try:
+                ts = time.strftime("%H:%M:%S")
+                with open(self._event_path, "a") as f:
+                    f.write(f"[{ts}] {msg}\n")
+            except OSError:
+                pass
+
+    def log(self, msg: str) -> None:
+        """로그 메시지를 링 버퍼에 추가하고 JSON에 반영."""
+        if not hasattr(self, "_log_lines"):
+            self._log_lines: List[str] = []
+        self._log_lines.append(msg)
+        if len(self._log_lines) > 8:
+            self._log_lines = self._log_lines[-8:]
+        self._event(msg)
+        self._write_json()
+
+    def agent_start(self, agent: str) -> None:
+        if agent in self.agent_status:
+            self.agent_status[agent] = {
+                "status": "running",
+                "start": time.time(),
+                "elapsed": 0,
+                "cost": 0.0,
+            }
+        self._event(f"{agent} 시작")
+        self._write_json()
+        self._print_block()
+
+    def agent_done(self, agent: str, elapsed: int, cost: float, result: str = "done") -> None:
+        if agent in self.agent_status:
+            self.agent_status[agent] = {
+                "status": result,
+                "elapsed": elapsed,
+                "cost": cost,
+            }
+        self.total_cost += cost
+        tag = "완료" if result == "done" else result
+        self._event(f"{agent} {tag} ({elapsed}s, ${cost:.2f})")
+        self._write_json()
+        self._print_block()
+
+    def agent_skip(self, agent: str, reason: str = "") -> None:
+        if agent in self.agent_status:
+            self.agent_status[agent] = {
+                "status": "skip",
+                "elapsed": 0,
+                "cost": 0.0,
+                "reason": reason,
+            }
+        self._write_json()
+
+    def _elapsed_str(self) -> str:
+        e = int(time.time() - self.start_time)
+        m, s = divmod(e, 60)
+        return f"{m}m{s:02d}s"
+
+    def _bar(self, status: str, width: int = 20) -> str:
+        if status == "done":
+            return "▓" * width + " ✅"
+        elif status == "fail":
+            return "▓" * width + " ❌"
+        elif status == "skip":
+            return "░" * width + " ⏭"
+        elif status == "running":
+            return "▓" * (width // 2) + "░" * (width - width // 2) + " ⏳"
+        else:
+            return "░" * width + "   "
+
+    def _print_block(self) -> None:
+        total = len(self.agents)
+        done = sum(1 for a in self.agents if self.agent_status[a]["status"] in ("done", "skip"))
+        pct = int(done / total * 100) if total else 0
+
+        print()
+        print(f"━━━ 📊 depth={self.depth} | attempt {self.attempt + 1}/{self.max_attempts}"
+              f" | ${self.total_cost:.2f}/${self.budget:.0f}"
+              f" | {self._elapsed_str()}"
+              f" | {pct}% ━━━")
+
+        for i, agent in enumerate(self.agents, 1):
+            s = self.agent_status[agent]
+            status = s["status"]
+            bar = self._bar(status)
+            detail = ""
+            if status == "done":
+                detail = f" {s.get('elapsed', 0)}s ${s.get('cost', 0):.2f}"
+            elif status == "running":
+                e = int(time.time() - s.get("start", time.time()))
+                detail = f" {e}s..."
+            print(f" [{i}/{total}] {agent:<20s} {bar}{detail}")
+
+        print()
+
+    def _write_json(self) -> None:
+        try:
+            _dbg = Path.cwd() / ".claude" / "harness-state" / "_hud_debug.log"
+        except OSError:
+            _dbg = None
+        if not self._hud_path:
+            # fallback: prefix 기반 경로 추론
+            if self.prefix:
+                _fb = Path.cwd() / ".claude" / "harness-state"
+                if _fb.is_dir():
+                    self._hud_path = _fb / f".{self.prefix}_hud"
+                    if _dbg:
+                        try:
+                            with open(_dbg, "a") as f:
+                                f.write(f"fallback: {self._hud_path}\n")
+                        except OSError:
+                            pass
+            if not self._hud_path:
+                if _dbg:
+                    try:
+                        with open(_dbg, "a") as f:
+                            f.write(f"_hud_path is None, prefix={self.prefix}\n")
+                    except OSError:
+                        pass
+                return
+        data = {
+            "depth": self.depth,
+            "attempt": self.attempt,
+            "max_attempts": self.max_attempts,
+            "cost": round(self.total_cost, 4),
+            "budget": self.budget,
+            "elapsed": int(time.time() - self.start_time),
+            "start_ts": int(self.start_time),
+            "issue": self.issue,
+            "log": getattr(self, "_log_lines", []),
+            "agents": [
+                {"name": a, **self.agent_status[a]}
+                for a in self.agents
+            ],
+        }
+        if not hasattr(self, "_write_count"):
+            self._write_count = 0
+        self._write_count += 1
+        try:
+            self._hud_path.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            exists_after = self._hud_path.exists()
+            if _dbg:
+                try:
+                    with open(_dbg, "a") as f:
+                        f.write(f"#{self._write_count} write OK exists={exists_after} path={self._hud_path}\n")
+                except OSError:
+                    pass
+        except OSError as e:
+            if _dbg:
+                try:
+                    with open(_dbg, "a") as f:
+                        f.write(f"#{self._write_count} write FAIL: {e} path={self._hud_path}\n")
+                except OSError:
+                    pass
+
+    def cleanup(self) -> None:
+        """하네스 종료 시 HUD에 완료 상태 기록 (파일 유지)."""
+        elapsed = int(time.time() - self.start_time)
+        m, s = divmod(elapsed, 60)
+        self._event(f"루프 종료 | ${self.total_cost:.2f} | {m}m{s:02d}s")
+        self._event(f"{'═' * 50}")
+        self._write_json()
+        if self._hud_path and self._hud_path.exists():
+            try:
+                data = json.loads(self._hud_path.read_text(encoding="utf-8"))
+                data["status"] = "done"
+                self._hud_path.write_text(
+                    json.dumps(data, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+            except (OSError, json.JSONDecodeError):
+                pass
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 4. parse_marker — markers.sh의 parse_marker() 대체
+# ═══════════════════════════════════════════════════════════════════════
+
+def parse_marker(filepath: str | Path, patterns: str) -> str:
+    """에이전트 출력 파일에서 마커를 파싱.
+
+    Args:
+        filepath: 에이전트 출력 파일 경로
+        patterns: 파이프 구분 마커 목록 (e.g. "PASS|FAIL|SPEC_MISSING")
+
+    Returns:
+        매칭된 마커 문자열, 없으면 "UNKNOWN"
+    """
+    try:
+        content = Path(filepath).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "UNKNOWN"
+
+    pattern_list = patterns.split("|")
+    joined = "|".join(re.escape(p) for p in pattern_list)
+
+    # 1차: 구조화된 마커 ---MARKER:X---
+    m = re.search(rf"---MARKER:({joined})---", content)
+    if m:
+        return m.group(1)
+
+    # 2차 폴백: 레거시 워드 바운더리 매칭
+    m = re.search(rf"\b({joined})\b", content)
+    if m:
+        return m.group(1)
+
+    return "UNKNOWN"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 5. RunLogger — JSONL 이벤트 로거 (rotate_harness_logs + write_run_end)
+# ═══════════════════════════════════════════════════════════════════════
+
+class RunLogger:
+    """JSONL 이벤트 로거. 기존 rotate_harness_logs() + write_run_end() 대체."""
+
+    def __init__(self, prefix: str, mode: str, issue: str = "") -> None:
+        self.prefix = prefix
+        self.mode = mode
+        self.issue = issue
+        self.log_dir = Path.home() / ".claude" / "harness-logs" / prefix
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.run_start = int(time.time())
+        self.run_ts = time.strftime("%Y%m%d_%H%M%S")
+        # bash 호환: 루프 스크립트가 HARNESS_RUN_TS로 히스토리 디렉토리 생성
+        os.environ["HARNESS_RUN_TS"] = self.run_ts
+
+        # FIFO 로테이션: 최신 10개 유지
+        self._rotate()
+
+        self.log_file = self.log_dir / f"run_{self.run_ts}.jsonl"
+
+        # run_start 이벤트
+        event: Dict[str, Any] = {
+            "event": "run_start",
+            "prefix": prefix,
+            "mode": mode,
+            "t": self.run_start,
+        }
+        if issue:
+            event["issue"] = issue
+        self._append(event)
+
+        print(f"[HARNESS] 실행 로그: {self.log_file}")
+        print(f'[HARNESS] 실시간 확인: tail -f "{self.log_file}"')
+
+    def _rotate(self) -> None:
+        """FIFO 회전 — 단 .reviewed 마커가 없는 로그는 보존.
+
+        reviewed 된 것 중 최신 9개만 유지(곧 추가될 새 로그 + reviewed 9 = 10).
+        unreviewed 로그는 회전 대상에서 제외 — 유저가 분석할 때까지 보존.
+        안전망으로 unreviewed가 30일 이상 묵으면 삭제(무한 누적 방지).
+        """
+        all_logs = sorted(
+            [f for f in self.log_dir.iterdir() if f.name.startswith("run_") and f.suffix == ".jsonl"],
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+
+        def _is_reviewed(p: Path) -> bool:
+            return p.with_suffix(".reviewed").exists()
+
+        reviewed = [p for p in all_logs if _is_reviewed(p)]
+        for old in reviewed[9:]:  # 새 파일 추가 후 reviewed 최대 10개
+            old.unlink(missing_ok=True)
+            old.with_suffix(".reviewed").unlink(missing_ok=True)
+            # _review.txt 는 통계 분석용으로 보존 (3KB~10KB로 가벼움)
+
+        # unreviewed 안전망: 30일 초과 로그는 정리 (회전 후 남은 파일만 재스캔)
+        cutoff = time.time() - 30 * 86400
+        for p in self.log_dir.iterdir():
+            if not (p.name.startswith("run_") and p.suffix == ".jsonl"):
+                continue
+            if _is_reviewed(p):
+                continue
+            try:
+                if p.stat().st_mtime < cutoff:
+                    p.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    def _append(self, event: Dict[str, Any]) -> None:
+        with open(self.log_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+    @property
+    def path(self) -> Path:
+        return self.log_file
+
+    def log_event(self, event: Dict[str, Any]) -> None:
+        self._append(event)
+
+    def log_agent_start(self, agent: str, prompt_chars: int) -> None:
+        t = int(time.time())
+        iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        self._append({
+            "event": "agent_start",
+            "agent": agent,
+            "t": t,
+            "start_ts": iso,
+            "prompt_chars": prompt_chars,
+        })
+
+    def log_agent_end(
+        self,
+        agent: str,
+        elapsed: int,
+        cost: float,
+        exit_code: int,
+        prompt_chars: int,
+    ) -> None:
+        t = int(time.time())
+        iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        self._append({
+            "event": "agent_end",
+            "agent": agent,
+            "t": t,
+            "end_ts": iso,
+            "elapsed": elapsed,
+            "duration_s": elapsed,
+            "exit": exit_code,
+            "cost_usd": cost,
+            "prompt_chars": prompt_chars,
+        })
+
+    def log_agent_stats(
+        self,
+        agent: str,
+        tools: Dict[str, int],
+        files_read: List[str],
+        in_tok: int,
+        out_tok: int,
+    ) -> None:
+        self._append({
+            "event": "agent_stats",
+            "agent": agent,
+            "tools": tools,
+            "files_read": files_read[:50],
+            "in_tok": in_tok,
+            "out_tok": out_tok,
+        })
+
+    def write_run_end(self, result: str, branch: str = "", issue: str = "") -> None:
+        """run_end 이벤트 + 타이밍 요약 출력."""
+        if result == "unknown":
+            result = "HARNESS_CRASH"
+        t_end = int(time.time())
+        total_elapsed = t_end - self.run_start
+        # 제어문자 제거
+        branch = re.sub(r"[\t\n\r]", "", branch)[:100]
+        self._append({
+            "event": "run_end",
+            "t": t_end,
+            "elapsed": total_elapsed,
+            "result": result,
+            "branch": branch,
+            "issue": issue or self.issue,
+        })
+        self._print_timing_summary(total_elapsed)
+
+        # 정책 17 리마인더
+        print()
+        print(f"[HARNESS] 정책 17: /harness-review 자동 실행 필수 — 결과: {result}")
+        print("[HARNESS] Bash stdout을 원문 그대로 유저에게 출력할 것 (재가공 금지)")
+        print()
+
+        # 완료 후 자동 리뷰 트리거 (백그라운드)
+        review_agent_py = Path.home() / ".claude" / "harness" / "review_agent.py"
+        review_agent_sh = Path.home() / ".claude" / "harness" / "review-agent.sh"
+        if review_agent_py.exists():
+            subprocess.Popen(
+                ["python3", str(review_agent_py), str(self.log_file), self.prefix],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        elif review_agent_sh.exists():
+            subprocess.Popen(
+                ["bash", str(review_agent_sh), str(self.log_file), self.prefix],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+        # 외부 알림 (HARNESS_NOTIFY env 설정된 경우에만)
+        try:
+            total_cost = 0.0
+            if self.log_file.exists():
+                for line in self.log_file.read_text(encoding="utf-8").splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        e = json.loads(line)
+                    except ValueError:
+                        continue
+                    c = e.get("cost_usd", 0)
+                    if c:
+                        total_cost += float(c)
+            from harness.notify import notify as _notify  # noqa: WPS433
+            _notify(
+                result=result,
+                prefix=self.prefix,
+                issue=issue or self.issue,
+                elapsed=total_elapsed,
+                cost_usd=total_cost,
+            )
+        except Exception:
+            pass  # 알림 실패는 하네스 흐름 영향 없게
+
+    def _print_timing_summary(self, total_elapsed: int) -> None:
+        """타이밍 요약 출력 (기존 _print_timing_summary와 동일)."""
+        if not self.log_file.exists():
+            return
+
+        agents: Dict[str, Dict[str, Any]] = {}
+        total_cost = 0.0
+        total_in = 0
+        total_out = 0
+
+        for line in self.log_file.read_text().splitlines():
+            if not line.strip():
+                continue
+            try:
+                e = json.loads(line)
+                if e.get("event") == "agent_end":
+                    a = e["agent"]
+                    elapsed = e.get("elapsed", 0)
+                    cost = float(e.get("cost_usd", 0) or 0)
+                    if a not in agents:
+                        agents[a] = {"calls": 0, "time": 0, "cost": 0.0, "in_tok": 0, "out_tok": 0}
+                    agents[a]["calls"] += 1
+                    agents[a]["time"] += elapsed
+                    agents[a]["cost"] += cost
+                    total_cost += cost
+                elif e.get("event") == "agent_stats":
+                    a = e.get("agent", "")
+                    if a in agents:
+                        agents[a]["in_tok"] += e.get("in_tok", 0)
+                        agents[a]["out_tok"] += e.get("out_tok", 0)
+                        total_in += e.get("in_tok", 0)
+                        total_out += e.get("out_tok", 0)
+            except Exception:
+                pass
+
+        print()
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("  하네스 실행 요약")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        mins, secs = divmod(total_elapsed, 60)
+        print(f"  총 실행 시간: {mins}m {secs}s")
+
+        if not agents:
+            print("  (에이전트 호출 없음)")
+        else:
+            print(f"  총 비용: ${total_cost:.4f}")
+            print(f"  총 토큰: in={total_in:,} out={total_out:,}")
+            print()
+            print(f"  {'에이전트':<20s} {'호출':<5s} {'시간':<10s} {'비용':<10s}")
+            print(f"  {'─'*20} {'─'*5} {'─'*10} {'─'*10}")
+            sorted_agents = sorted(agents.items(), key=lambda x: x[1]["time"], reverse=True)
+            for name, s in sorted_agents:
+                m, sec = divmod(s["time"], 60)
+                print(f"  {name:<20s} {s['calls']:<5d} {m}m{sec:02d}s      ${s['cost']:.4f}")
+            slowest_name, slowest_data = sorted_agents[0]
+            print()
+            print(f"  가장 느린 단계: {slowest_name} ({slowest_data['time']}s)")
+
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 6. agent_call — _agent_call()의 Python 전환
+# ═══════════════════════════════════════════════════════════════════════
+
+def agent_call(
+    agent: str,
+    timeout_secs: int,
+    prompt: str,
+    out_file: str | Path,
+    run_logger: Optional[RunLogger] = None,
+    config: Optional[HarnessConfig] = None,
+    hist_dir: Optional[str | Path] = None,
+    cwd: Optional[str | Path] = None,
+) -> int:
+    """에이전트 호출 래퍼 — _agent_call()의 Python 포팅.
+
+    Returns:
+        exit code (0=성공, 124/142=타임아웃, etc.)
+    """
+    out_file = Path(out_file)
+    # cost/stats 파일명: bash의 ${out_file%.txt}_cost.txt 와 동일
+    stem = str(out_file)
+    if stem.endswith(".txt"):
+        stem = stem[:-4]
+    cost_file = Path(f"{stem}_cost.txt")
+    stats_file = Path(f"{stem}_stats.json")
+
+    t_start = int(time.time())
+    call_exit = 0
+
+    # 초기화: 파이프라인 실패 시에도 파일 존재 보장
+    cost_file.write_text("0")
+    stats_file.write_text("{}")
+    out_file.write_text("")
+
+    # 히스토리: 인풋 프롬프트 원문 보존
+    if hist_dir and Path(hist_dir).is_dir():
+        (Path(hist_dir) / f"{agent}.prompt").write_text(prompt, encoding="utf-8")
+
+    # prefix 결정 (active 플래그용)
+    if config:
+        prefix_for_flag = config.prefix
+    else:
+        prefix_for_flag = _detect_prefix()
+
+    # agent_start 이벤트
+    if run_logger:
+        run_logger.log_agent_start(agent, len(prompt))
+
+    # Phase 3: live.json에 활성 에이전트 기록 — 훅(agent-boundary/issue-gate)은 live.json 단일 소스.
+    # session_id는 executor가 부팅 시 HARNESS_SESSION_ID env var로 주입.
+    _session_id_for_agent = ""
+    try:
+        _hooks_dir = Path.home() / ".claude" / "hooks"
+        if str(_hooks_dir) not in sys.path:
+            sys.path.insert(0, str(_hooks_dir))
+        import session_state as _ss
+        _session_id_for_agent = _ss.current_session_id()
+        if _session_id_for_agent:
+            _ss.update_live(_session_id_for_agent, agent=agent)
+            print(f"[HARNESS] live.json.agent ← {agent} (session={_session_id_for_agent[:8]}…)")
+        else:
+            print(f"[HARNESS] session_id 없음 — live.json 기록 skip (agent={agent})")
+    except Exception as _e:
+        print(f"[HARNESS] session_state 로드 실패: {_e}")
+        _ss = None  # type: ignore
+
+    # 공통 프리앰블 주입
+    preamble_file = Path.home() / ".claude" / "agents" / "preamble.md"
+    preamble = ""
+    if preamble_file.exists():
+        preamble = preamble_file.read_text(encoding="utf-8")
+
+    scope_prefix = (
+        "[SCOPE] 프로젝트 소스(src/, docs/, 루트 설정)만 분석 대상. "
+        ".claude/, hooks/, harness-*.sh, orchestration-rules.md 등 "
+        "하네스 인프라 파일은 읽지도 수정하지도 마라."
+    )
+    full_prompt = f"{preamble}\n\n{scope_prefix}\n{prompt}"
+
+    # 입력 미리보기 (SCOPE 접두어 제외, 3줄, 160자 캡)
+    preview_lines = [
+        line for line in full_prompt.splitlines()
+        if not line.startswith("[SCOPE]") and line.strip()
+    ][:3]
+    preview = " ".join(preview_lines).replace("  ", " ")[:160]
+    print(f"  → {agent}: {preview}")
+
+    # 에이전트별 불필요 도구 차단 (bypassPermissions가 frontmatter tools를 무시하므로 여기서 강제)
+    # 단일 소스: orchestration-rules.md "에이전트 도구 차단 매트릭스" 섹션
+    _PENCIL_WRITE = (
+        "mcp__pencil__batch_design,"
+        "mcp__pencil__set_variables,"
+        "mcp__pencil__open_document,"
+        "mcp__pencil__find_empty_space_on_canvas,"
+        "mcp__pencil__snapshot_layout,"
+        "mcp__pencil__export_nodes,"
+        "mcp__pencil__replace_all_matching_properties,"
+        "mcp__pencil__search_all_unique_properties,"
+        "mcp__pencil__get_guidelines"
+    )
+    _AGENT_DISALLOWED: Dict[str, str] = {
+        # ReadOnly + 시스템 명령 차단
+        "product-planner": "Agent,Bash,NotebookEdit",
+        "validator": "Agent,Bash,Write,Edit,NotebookEdit",
+        "pr-reviewer": "Agent,Bash,Write,Edit,NotebookEdit",
+        "design-critic": "Agent,Bash,Write,Edit,NotebookEdit",
+        "security-reviewer": "Agent,Bash,Write,Edit,NotebookEdit",
+        # 기획 판단 리뷰어 — ReadOnly (PRD + UX Flow 현실성/MVP 균형 심사)
+        "plan-reviewer": "Agent,Bash,Write,Edit,NotebookEdit",
+        # H3: qa = ReadOnly 분류, 시스템 명령 금지
+        "qa": "Agent,Bash,Write,Edit,NotebookEdit",
+        # H1: ux-architect = Pencil 읽기 4종만, 캔버스 쓰기 차단
+        "ux-architect": f"Agent,Bash,NotebookEdit,{_PENCIL_WRITE}",
+        # H2: engineer = 디자인 핸드오프 읽기만, 캔버스 쓰기 차단 (Bash는 빌드/테스트 유지)
+        "engineer": f"Agent,NotebookEdit,{_PENCIL_WRITE}",
+        # M1: test-engineer = 테스트 실행은 하네스가 vitest 직접 호출, Bash 불필요
+        "test-engineer": "Agent,Bash,NotebookEdit",
+        # H4: architect = Read/Write/Edit + gh + Pencil 읽기로 충분, Bash 사용 흔적 없음
+        "architect": "Agent,Bash,NotebookEdit",
+    }
+    disallowed = _AGENT_DISALLOWED.get(agent, "Agent")
+
+    # claude CLI 실행
+    base_cmd = [
+        "claude", "--agent", agent, "--print", "--verbose",
+        "--output-format", "stream-json", "--include-partial-messages",
+        "--max-budget-usd", "2.00",
+        "--permission-mode", "bypassPermissions",
+        "--disallowedTools", disallowed,
+        "--fallback-model", "haiku",
+    ]
+    # isolation은 WorktreeManager가 cwd 전달로 처리 — CLI에 --isolation 플래그 전달 금지
+    # (claude CLI에는 --isolation 옵션이 없음, --worktree만 존재)
+    cmd = base_cmd + ["-p", full_prompt]
+
+    env = os.environ.copy()
+    env["HARNESS_INTERNAL"] = "1"
+    env["HARNESS_PREFIX"] = prefix_for_flag
+    env["HARNESS_AGENT_NAME"] = agent  # 하위호환: 옛 훅 경로 남아있을 때만 사용
+    if os.environ.get("HARNESS_ISSUE_NUM"):
+        env["HARNESS_ISSUE_NUM"] = os.environ["HARNESS_ISSUE_NUM"]
+    # Phase 3: session_id 자식 subprocess에 전파
+    if _session_id_for_agent:
+        env["HARNESS_SESSION_ID"] = _session_id_for_agent
+
+    run_log_path = str(run_logger.path) if run_logger else "/dev/null"
+
+    # stream-json 파싱으로 result/cost/stats 추출
+    result_text = ""
+    cost = 0.0
+    in_tok = 0
+    out_tok = 0
+    tools: Dict[str, int] = {}
+    files_read: List[str] = []
+    cur_tool = ""
+    cur_input = ""
+    _last_heartbeat = time.time()
+    _hb_interval = 30  # 30초마다 heartbeat
+
+    try:
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            env=env, text=True,
+            cwd=str(cwd) if cwd else None,
+        )
+
+        log_fh = None
+        if run_logger:
+            log_fh = open(run_log_path, "a", encoding="utf-8")
+
+        deadline = time.time() + timeout_secs
+        assert proc.stdout is not None
+
+        # Watchdog: stdout 블로킹 시에도 타임아웃 강제 (bash timeout 명령 대응)
+        import threading
+        def _watchdog() -> None:
+            remaining = deadline - time.time()
+            if remaining > 0:
+                time.sleep(remaining)
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                # stdout 파이프 교착 방지
+                try:
+                    if proc.stdout:
+                        proc.stdout.close()
+                except Exception:
+                    pass
+        wd = threading.Thread(target=_watchdog, daemon=True)
+        wd.start()
+
+        for line in proc.stdout:
+            # tee to RUN_LOG
+            if log_fh:
+                log_fh.write(line)
+                log_fh.flush()
+
+            line = line.strip()
+            if not line:
+                continue
+
+            try:
+                o = json.loads(line)
+                t = o.get("type", "")
+
+                if t == "result":
+                    result_text = o.get("result", "")
+                    cost = float(o.get("total_cost_usd", 0) or 0)
+                    usage = o.get("usage", {})
+                    if usage:
+                        in_tok = usage.get("input_tokens", 0)
+                        out_tok = usage.get("output_tokens", 0)
+
+                elif t == "stream_event":
+                    e = o.get("event", {})
+                    et = e.get("type", "")
+
+                    if et == "content_block_start":
+                        cb = e.get("content_block", {})
+                        if cb.get("type") == "tool_use":
+                            name = cb.get("name", "unknown")
+                            tools[name] = tools.get(name, 0) + 1
+                            cur_tool = name
+                            cur_input = ""
+                            # tool call 시 즉시 출력
+                            elapsed = int(time.time() - t_start)
+                            total_calls = sum(tools.values())
+                            print(f"  [{agent}] {elapsed}s | {name} (#{total_calls})", flush=True)
+
+                    elif et == "content_block_delta":
+                        d = e.get("delta", {})
+                        if d.get("type") == "input_json_delta" and cur_tool in ("Read", "Glob", "Grep"):
+                            cur_input += d.get("partial_json", "")
+
+                    elif et == "content_block_stop":
+                        if cur_tool in ("Read", "Glob") and cur_input:
+                            try:
+                                inp = json.loads(cur_input)
+                                fp = inp.get("file_path", "") or inp.get("pattern", "")
+                                if fp:
+                                    files_read.append(fp)
+                            except Exception:
+                                pass
+                        cur_tool = ""
+                        cur_input = ""
+
+                    elif et == "message_delta":
+                        u = e.get("usage", {})
+                        if u and in_tok == 0:
+                            in_tok += u.get("input_tokens", 0)
+                            out_tok += u.get("output_tokens", 0)
+            except Exception:
+                pass
+
+            # 주기적 heartbeat (30초마다, tool call 없는 thinking 구간 대응)
+            now = time.time()
+            if now - _last_heartbeat >= _hb_interval:
+                elapsed = int(now - t_start)
+                total_calls = sum(tools.values())
+                print(f"  [{agent}] {elapsed}s | thinking... (tools: {total_calls})", flush=True)
+                _last_heartbeat = now
+
+            # 타임아웃 체크
+            if time.time() > deadline:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                call_exit = 124
+                break
+
+        if call_exit == 0:
+            proc.wait()
+            call_exit = proc.returncode or 0
+
+    except Exception as exc:
+        call_exit = 1
+    finally:
+        if log_fh:
+            log_fh.close()
+
+    # 결과 파일 기록
+    try:
+        cost_file.write_text(str(cost))
+        out_file.write_text(result_text)
+        stats_file.write_text(json.dumps(
+            {"tools": tools, "files_read": files_read[:50], "in_tok": in_tok, "out_tok": out_tok},
+            ensure_ascii=False,
+        ))
+    except OSError:
+        pass
+
+    t_end = int(time.time())
+    duration_s = t_end - t_start
+
+    # agent_end 이벤트
+    if run_logger:
+        run_logger.log_agent_end(agent, duration_s, cost, call_exit, len(full_prompt))
+
+    # agent_stats 이벤트
+    if run_logger:
+        run_logger.log_agent_stats(agent, tools, files_read, in_tok, out_tok)
+
+    # 히스토리: 아웃풋 원문 + stats 보존
+    if hist_dir and Path(hist_dir).is_dir():
+        try:
+            import shutil
+            shutil.copy2(str(out_file), str(Path(hist_dir) / f"{agent}.out"))
+            shutil.copy2(str(stats_file), str(Path(hist_dir) / f"{agent}.stats.json"))
+        except Exception:
+            pass
+
+    # Phase 3: live.json agent 필드 해제 (race 방지: 내 agent일 때만)
+    if _session_id_for_agent:
+        try:
+            import session_state as _ss  # type: ignore
+            _ss.clear_live_field(_session_id_for_agent, "agent", expect_value=agent)
+        except Exception:
+            pass
+
+    # 토큰 통계 표시
+    if call_exit == 0:
+        print(f"[HARNESS] ← {agent} 완료 ({duration_s}s | ${cost} | in:{in_tok} out:{out_tok}tok)")
+    elif call_exit in (124, 142):
+        print(f"[HARNESS] ← {agent} 타임아웃 ({duration_s}s)")
+    else:
+        print(f"[HARNESS] ← {agent} 실패 ({duration_s}s, exit={call_exit})")
+
+    # 출력 미리보기 (80줄 이하: 전체, 초과: 앞50 + 뒤20)
+    if out_file.exists() and out_file.stat().st_size > 0:
+        lines = out_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        total_lines = len(lines)
+        header = f"┌── {agent} 출력 ({total_lines}줄) ────────────────────────────"
+        footer = "└────────────────────────────────────────────────────────────"
+        if total_lines <= 80:
+            body = "\n".join(lines)
+        else:
+            body = "\n".join(lines[:50]) + f"\n│ ··· ({total_lines - 70}줄 중략) ···\n" + "\n".join(lines[-20:])
+        print(header)
+        print(body)
+        print(footer)
+
+        # events 파일에도 에이전트 출력 기록 (tail -f 모니터용)
+        if config:
+            try:
+                pfx = getattr(config, "prefix", None)
+                if pfx:
+                    ev_path = Path(".claude/harness-state") / f".{pfx}_events"
+                    if ev_path.exists():
+                        with open(ev_path, "a") as ef:
+                            ef.write(f"{header}\n{body}\n{footer}\n")
+            except OSError:
+                pass
+
+    return call_exit
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 7. Git 유틸 — utils.sh의 git 관련 함수들
+# ═══════════════════════════════════════════════════════════════════════
+
+def _git(*args: str, check: bool = False, cwd: Optional[str] = None) -> subprocess.CompletedProcess[str]:
+    """git 명령 실행 헬퍼."""
+    return subprocess.run(
+        ["git"] + list(args),
+        capture_output=True, text=True, timeout=30,
+        check=check,
+        cwd=cwd,
+    )
+
+
+def _default_branch() -> str:
+    """원격 기본 브랜치 감지."""
+    r = _git("symbolic-ref", "refs/remotes/origin/HEAD")
+    if r.returncode == 0 and r.stdout.strip():
+        return r.stdout.strip().replace("refs/remotes/origin/", "")
+    return "main"
+
+
+def find_main_repo_root(start_path: Optional[Path] = None) -> Path:
+    """실제 main repo root를 반환.
+
+    Why: `git rev-parse --show-toplevel`은 worktree 내부에서 worktree 자신의 경로를
+    반환한다 (git worktree가 각 트리를 독립 working tree로 취급). cwd가 worktree 내부로
+    persist된 상태에서 WorktreeManager를 만들면 base_dir이 `{worktree}/.worktrees/...`로
+    중첩되어 `git worktree add`가 exit 128로 크래시한다. `git worktree list --porcelain`
+    첫 줄이 항상 main worktree이므로 이것으로 판별한다.
+
+    Fallback: git 명령 실패 시 start_path(또는 cwd).resolve() 반환 — 테스트나 비-repo 환경.
+    """
+    cwd = (start_path or Path.cwd()).resolve()
+    try:
+        r = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            capture_output=True, text=True, timeout=5, cwd=str(cwd),
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            first = r.stdout.split("\n", 1)[0]
+            if first.startswith("worktree "):
+                return Path(first[len("worktree "):].strip()).resolve()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return cwd
+
+
+class WorktreeManager:
+    """이슈별 git worktree 라이프사이클 관리."""
+
+    def __init__(self, project_root: Path, prefix: str) -> None:
+        # L1 방어: project_root가 worktree 내부로 들어와도 실제 main repo root 복구.
+        # cwd가 worktree로 persist된 상태에서 StateDir(Path.cwd()) → WorktreeManager로
+        # 전파되는 중첩 경로 버그 차단.
+        self.project_root = find_main_repo_root(project_root)
+        self.prefix = prefix
+        self.base_dir = self.project_root / ".worktrees" / prefix
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        # .gitignore에 .worktrees/ 자동 등록 (git tracked 방지)
+        gitignore = self.project_root / ".gitignore"
+        try:
+            content = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
+            if ".worktrees/" not in content and ".worktrees" not in content:
+                with open(gitignore, "a", encoding="utf-8") as f:
+                    f.write("\n# harness worktrees\n.worktrees/\n")
+        except OSError:
+            pass
+
+    def worktree_path(self, issue_num: str) -> Path:
+        return self.base_dir / f"issue-{issue_num}"
+
+    def create_or_reuse(self, branch_name: str, issue_num: str) -> Path:
+        """worktree 생성 또는 기존 재사용. 반환: worktree 절대 경로."""
+        wt_path = self.worktree_path(issue_num)
+        if wt_path.exists():
+            return wt_path
+        r = _git("show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}")
+        if r.returncode == 0:
+            _git("worktree", "add", str(wt_path), branch_name, check=True)
+        else:
+            default = _default_branch()
+            _git("worktree", "add", "-b", branch_name, str(wt_path), default, check=True)
+        return wt_path
+
+    def remove(self, issue_num: str) -> None:
+        """worktree 정리."""
+        wt_path = self.worktree_path(issue_num)
+        if wt_path.exists():
+            try:
+                _git("worktree", "remove", str(wt_path), "--force")
+            except Exception:
+                import shutil
+                shutil.rmtree(str(wt_path), ignore_errors=True)
+                try:
+                    _git("worktree", "prune")
+                except Exception:
+                    pass
+
+    def list_active(self) -> list:
+        """활성 worktree 이슈 번호 목록."""
+        if not self.base_dir.exists():
+            return []
+        return [d.name.replace("issue-", "") for d in self.base_dir.iterdir()
+                if d.is_dir() and d.name.startswith("issue-")]
+
+
+def _cooldown_path(project_root: Path, prefix: str, issue: str) -> Path:
+    """merge cooldown 파일 경로 — 프로젝트 전역 (세션 간 보존)."""
+    cooldown_dir = project_root / ".claude" / "harness-state" / ".cooldown"
+    cooldown_dir.mkdir(parents=True, exist_ok=True)
+    return cooldown_dir / f"{prefix}_{issue}.json"
+
+
+def set_merge_cooldown(
+    project_root: Path, prefix: str, issue: str, *,
+    reason: str, branch: str = "", stderr_tail: str = "",
+) -> None:
+    """merge 실패 시 cooldown 생성 — 다음 세션 진입 자동 차단.
+    Why: MERGE_CONFLICT_ESCALATE 후 같은 executor를 그대로 재실행하면 같은 실패를 반복해
+    시간·비용만 낭비한다. 유저가 수동 개입(rebase·PR 정리) 후 --force-retry로 우회한다."""
+    path = _cooldown_path(project_root, prefix, issue)
+    path.write_text(json.dumps({
+        "reason": reason,
+        "timestamp": int(time.time()),
+        "branch": branch,
+        "stderr_tail": stderr_tail[:500],
+    }))
+
+
+def get_merge_cooldown(project_root: Path, prefix: str, issue: str) -> Optional[dict]:
+    """cooldown 상태 조회. 없으면 None."""
+    path = _cooldown_path(project_root, prefix, issue)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def clear_merge_cooldown(project_root: Path, prefix: str, issue: str) -> None:
+    """merge 성공 또는 --force-retry 우회 시 cooldown 제거."""
+    _cooldown_path(project_root, prefix, issue).unlink(missing_ok=True)
+
+
+def _attempt_merge_selfheal(branch: str) -> bool:
+    """merge 실패 후 self-heal: base 최신화 + rebase + force-with-lease push.
+    Returns: True면 merge 재시도 가능, False면 ESCALATE 필요."""
+    default = _default_branch()
+
+    r = subprocess.run(
+        ["git", "fetch", "origin", default],
+        capture_output=True, text=True, timeout=30,
+    )
+    if r.returncode != 0:
+        return False
+
+    r = subprocess.run(
+        ["git", "rev-parse", "--verify", f"refs/heads/{branch}"],
+        capture_output=True, text=True, timeout=10,
+    )
+    if r.returncode != 0:
+        return False  # 로컬에 branch 없음 (worktree 환경 등) — self-heal 불가
+
+    r = subprocess.run(
+        ["git", "checkout", branch],
+        capture_output=True, text=True, timeout=15,
+    )
+    if r.returncode != 0:
+        return False
+
+    r = subprocess.run(
+        ["git", "rebase", f"origin/{default}"],
+        capture_output=True, text=True, timeout=60,
+    )
+    if r.returncode != 0:
+        subprocess.run(["git", "rebase", "--abort"], capture_output=True, timeout=30)
+        print(f"[HARNESS] self-heal rebase conflict — 실제 코드 충돌: {r.stderr[:150]}")
+        return False
+
+    r = subprocess.run(
+        ["git", "push", "--force-with-lease", "origin", branch],
+        capture_output=True, text=True, timeout=30,
+    )
+    if r.returncode != 0:
+        print(f"[HARNESS] self-heal force-push 실패: {r.stderr[:150]}")
+        return False
+
+    print(f"[HARNESS] self-heal 성공: {branch} rebased on {default}")
+    return True
+
+
+def _cleanup_orphan_remote_branch(branch_name: str) -> None:
+    """원격 branch가 있지만 OPEN PR이 없으면 orphan으로 판단해 삭제한다.
+    Why: 이전 세션이 push만 하고 merge 못 한 채 종료되면 deterministic branch name 때문에
+    다음 세션에서 non-fast-forward 충돌 → MERGE_CONFLICT_ESCALATE 반복. OPEN PR이 있으면
+    이어서 작업해야 하므로 그대로 둔다."""
+    r = subprocess.run(
+        ["git", "ls-remote", "--exit-code", "--heads", "origin", branch_name],
+        capture_output=True, text=True, timeout=10,
+    )
+    if r.returncode != 0:
+        return  # 원격에 없음
+
+    r_pr = subprocess.run(
+        ["gh", "pr", "list", "--head", branch_name, "--state", "open",
+         "--json", "number", "-q", ".[0].number"],
+        capture_output=True, text=True, timeout=10,
+    )
+    if r_pr.returncode == 0 and r_pr.stdout.strip():
+        print(f"[HARNESS] 원격 branch + OPEN PR #{r_pr.stdout.strip()} 발견 — 이어서 작업: {branch_name}")
+        return
+
+    print(f"[HARNESS] orphan 원격 branch 자동 정리: {branch_name} (OPEN PR 없음)")
+    subprocess.run(
+        ["git", "push", "origin", "--delete", branch_name],
+        capture_output=True, text=True, timeout=15,
+    )
+
+
+def create_feature_branch(
+    branch_type: str,
+    issue_num: str | int,
+    worktree_mgr: Optional[WorktreeManager] = None,
+) -> "tuple[str, Optional[Path]]":
+    """Feature branch 생성. 동일 브랜치 존재 시 재진입."""
+    issue_num = str(issue_num)
+
+    # milestone: GitHub 이슈에서 읽기
+    milestone = ""
+    try:
+        r = subprocess.run(
+            ["gh", "issue", "view", issue_num, "--json", "milestone", "-q", ".milestone.title"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            milestone = re.sub(r"[^a-z0-9-]", "-", r.stdout.strip().lower())
+            milestone = re.sub(r"-+", "-", milestone).strip("-")
+    except Exception:
+        pass
+
+    # slug: issue title → 영문/숫자, 30자 캡
+    slug = ""
+    try:
+        r = subprocess.run(
+            ["gh", "issue", "view", issue_num, "--json", "title", "-q", ".title"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            raw = r.stdout.strip().lower()
+            raw = re.sub(r"[^a-z0-9 -]", "", raw)
+            raw = re.sub(r"\s+", " ", raw).strip()
+            slug = re.sub(r"-+", "-", raw.replace(" ", "-")).strip("-")[:30]
+    except Exception:
+        pass
+
+    # 브랜치명 조립
+    branch_name = f"{branch_type}/"
+    if milestone:
+        branch_name += f"{milestone}-"
+    branch_name += issue_num
+    if slug:
+        branch_name += f"-{slug}"
+
+    default = _default_branch()
+
+    # orphan 원격 branch 선제 정리 — 이전 세션 잔재로 인한 non-fast-forward 충돌 방지
+    _cleanup_orphan_remote_branch(branch_name)
+
+    # worktree 모드: git worktree add로 격리
+    if worktree_mgr:
+        wt_path = worktree_mgr.create_or_reuse(branch_name, issue_num)
+        return branch_name, wt_path
+
+    # 기존 모드: git checkout -b
+    r = _git("show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}")
+    if r.returncode == 0:
+        _git("checkout", branch_name)
+        return branch_name, None
+
+    _git("checkout", "-b", branch_name, default)
+    return branch_name, None
+
+
+def push_and_ensure_pr(
+    branch: str,
+    issue: str | int,
+    impl_file: str = "",
+    depth: str = "",
+    state_dir: Optional[StateDir] = None,
+    prefix: str = "",
+    cwd: Optional[str] = None,
+) -> str:
+    """커밋 후 push + PR 없으면 생성. 반환: PR URL (실패 시 빈 문자열)."""
+    issue = str(issue)
+    default = _default_branch()
+
+    # push
+    r = subprocess.run(
+        ["git", "push", "-u", "origin", branch],
+        capture_output=True, text=True, timeout=30,
+        cwd=cwd,
+    )
+    if r.returncode != 0:
+        print(f"[HARNESS] push 실패: {r.stderr[:200]}")
+        return ""
+
+    # PR 존재 확인
+    r_check = subprocess.run(
+        ["gh", "pr", "view", branch, "--json", "url", "-q", ".url"],
+        capture_output=True, text=True, timeout=10,
+        cwd=cwd,
+    )
+    if r_check.returncode == 0 and r_check.stdout.strip():
+        print(f"[HARNESS] pushed → PR 업데이트: {r_check.stdout.strip()}")
+        return r_check.stdout.strip()
+
+    # PR 생성
+    impl_name = Path(impl_file).stem if impl_file else f"issue-{issue}"
+    pr_title = f"feat: {impl_name} (#{issue})"
+
+    # PR body: generate_pr_body 시도 (순환 의존 방지 lazy import), 실패 시 간단 body
+    pr_body = f"## Summary\n- Issue: #{issue}\n- Branch: `{branch}`\n- Depth: {depth}"
+    if impl_file and state_dir and prefix:
+        try:
+            try:
+                from .helpers import generate_pr_body as _gen_body
+            except ImportError:
+                from helpers import generate_pr_body as _gen_body
+            pr_body = _gen_body(impl_file, issue, 0, 3, state_dir, prefix)
+        except Exception:
+            pass  # fallback to simple body
+
+    r_pr = subprocess.run(
+        ["gh", "pr", "create",
+         "--title", pr_title,
+         "--body", pr_body,
+         "--base", default,
+         "--head", branch],
+        capture_output=True, text=True, timeout=30,
+        cwd=cwd,
+    )
+    if r_pr.returncode == 0:
+        url = r_pr.stdout.strip()
+        print(f"[HARNESS] PR 생성: {url}")
+        return url
+
+    print(f"[HARNESS] PR 생성 실패: {r_pr.stderr[:200]}")
+    return ""
+
+
+def merge_to_main(
+    branch: str,
+    issue: str | int,
+    depth: str,
+    prefix: str,
+    state_dir: Optional[StateDir] = None,
+    worktree_mgr: Optional[WorktreeManager] = None,
+) -> bool:
+    """LGTM 후 squash merge. 반환: True=성공."""
+    default = _default_branch()
+
+    if state_dir is None:
+        state_dir = StateDir(Path.cwd(), prefix)
+
+    # 머지 전 게이트 (depth별 분기)
+    if depth in ("fast", "simple", "std", "deep"):
+        if not state_dir.flag_exists(Flag.PR_REVIEWER_LGTM):
+            print(f"[HARNESS] merge 거부: pr_reviewer_lgtm 없음 ({depth})")
+            return False
+    if depth == "deep":
+        if not state_dir.flag_exists(Flag.SECURITY_REVIEW_PASSED):
+            print("[HARNESS] merge 거부: security_review_passed 없음 (deep)")
+            return False
+    if depth == "bugfix":
+        if not state_dir.flag_exists(Flag.VALIDATOR_B_PASSED):
+            print("[HARNESS] merge 거부: validator_b_passed 없음 (bugfix)")
+            return False
+
+    # 최종 push (미커밋 변경 없는지 확인 + PR에 최신 반영)
+    push_and_ensure_pr(branch, issue, depth=depth, state_dir=state_dir, prefix=prefix)
+
+    # squash merge
+    r_merge = subprocess.run(
+        ["gh", "pr", "merge", branch, "--squash"],
+        capture_output=True, text=True, timeout=30,
+    )
+    if r_merge.returncode != 0:
+        # self-heal 1회 시도: base 최신화 후 재merge
+        print(f"[HARNESS] merge 실패 — self-heal 시도: {r_merge.stderr[:150]}")
+        if _attempt_merge_selfheal(branch):
+            r_retry = subprocess.run(
+                ["gh", "pr", "merge", branch, "--squash"],
+                capture_output=True, text=True, timeout=30,
+            )
+            if r_retry.returncode == 0:
+                r_merge = r_retry  # 성공 흐름으로 이어감
+            else:
+                set_merge_cooldown(
+                    Path.cwd(), prefix, str(issue),
+                    reason="MERGE_CONFLICT_ESCALATE", branch=branch,
+                    stderr_tail=r_retry.stderr,
+                )
+                print(f"MERGE_CONFLICT_ESCALATE (self-heal 후 재실패)\n{r_retry.stderr[:200]}")
+                return False
+        else:
+            set_merge_cooldown(
+                Path.cwd(), prefix, str(issue),
+                reason="MERGE_CONFLICT_ESCALATE", branch=branch,
+                stderr_tail=r_merge.stderr,
+            )
+            print(f"MERGE_CONFLICT_ESCALATE\n{r_merge.stderr[:200]}")
+            return False
+
+    # worktree 정리 (merge 성공 시)
+    if worktree_mgr:
+        worktree_mgr.remove(str(issue))
+        print(f"[HARNESS] worktree 정리: issue-{issue}")
+
+    # 로컬 동기화 (브랜치 보존)
+    _git("checkout", default)
+    _git("pull")
+    clear_merge_cooldown(Path.cwd(), prefix, str(issue))
+    print(f"[HARNESS] PR squash merged: {branch} → {default}")
+    return True
+
+
+def generate_commit_msg(impl_file: str = "", issue_num: str | int = "") -> str:
+    """커밋 메시지 생성."""
+    if impl_file:
+        impl_name = Path(impl_file).stem
+    else:
+        impl_name = f"bugfix-{issue_num or 'unknown'}"
+
+    r = _git("diff", "--cached", "--name-only")
+    changed = " ".join(r.stdout.strip().splitlines()[:5]) if r.returncode == 0 else "(파일 목록 없음)"
+
+    return (
+        f"feat: implement {impl_name} (#{issue_num})\n"
+        f"\n"
+        f"[왜] Issue #{issue_num} 구현\n"
+        f"[변경]\n"
+        f"- {changed}\n"
+        f"\n"
+        f"Closes #{issue_num}\n"
+        f"\n"
+        f"Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+    )
+
+
+def collect_changed_files(cwd: Optional[str] = None) -> List[str]:
+    """변경된 파일 목록. 변경 없으면 빈 리스트."""
+    r = _git("status", "--short", cwd=cwd)
+    if r.returncode != 0:
+        return []
+    files = []
+    for line in r.stdout.splitlines():
+        line = line.strip()
+        if re.match(r"^( M|M |A |\?\?)", line):
+            parts = line.split(None, 1)
+            if len(parts) >= 2:
+                files.append(parts[1])
+    return files
+
+
+def harness_commit_and_merge(
+    branch: str,
+    issue: str | int,
+    depth: str,
+    prefix: str,
+    suffix: str = "",
+    state_dir: Optional[StateDir] = None,
+    impl_file: str = "",
+) -> bool:
+    """커밋 + 머지 일괄 처리. True=성공(HARNESS_DONE)."""
+    changed = collect_changed_files()
+    if changed:
+        _git("add", "--", *changed)
+        msg = generate_commit_msg(impl_file, issue)
+        if suffix:
+            msg += f" {suffix}"
+        _git("commit", "-m", msg)
+
+    if not merge_to_main(branch, issue, depth, prefix, state_dir):
+        os.environ["HARNESS_RESULT"] = "MERGE_CONFLICT_ESCALATE"
+        print("MERGE_CONFLICT_ESCALATE")
+        print(f"branch: {branch}")
+        return False
+
+    return True
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 8. 컨텍스트 빌더 — utils.sh의 컨텍스트 함수들
+# ═══════════════════════════════════════════════════════════════════════
+
+def extract_src_refs(filepath: str | Path) -> List[str]:
+    """impl 파일에서 참조된 src/ 경로를 추출."""
+    try:
+        content = Path(filepath).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    matches = re.findall(r"src/[^ `\"']+\.(?:ts|tsx|js|jsx)", content)
+    return sorted(set(matches))[:5]
+
+
+def extract_files_from_error(error_text: str) -> List[str]:
+    """error trace에서 src/ 경로 역추적."""
+    matches = re.findall(r"src/[^ :()]+\.(?:ts|tsx|js|jsx)", error_text)
+    return sorted(set(matches))[:5]
+
+
+def build_smart_context(
+    impl: str | Path,
+    attempt_n: int,
+    err_trace: str = "",
+) -> str:
+    """스마트 컨텍스트 구성. 30KB 캡.
+
+    호출 시점에 cwd가 worktree로 chdir됐을 수 있고 impl이 상대경로라면
+    worktree 안에서 해당 파일을 못 찾아 OSError → ctx=""가 된다
+    (v05 디렉토리가 아직 base branch에 없는 초기 feature branch에서 재현됨).
+    caller 측 impl_file 변수는 로그/프롬프트에 상대경로로 그대로 노출돼야 하므로
+    resolve는 이 함수 내부에서만 수행해 영향 범위를 파일 읽기 한 곳으로 국한한다.
+    """
+    impl = Path(impl).resolve()
+    ctx = ""
+
+    if attempt_n == 0:
+        try:
+            ctx = impl.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            ctx = ""
+        for f in extract_src_refs(impl):
+            fp = Path(f)
+            if fp.is_file():
+                try:
+                    chunk = fp.read_bytes()[:3000].decode("utf-8", errors="replace")
+                    ctx += f"\n=== {f} ===\n{chunk}"
+                except OSError:
+                    pass
+    else:
+        # retry 시에도 impl 포함 (engineer(N) Read 낭비 방지)
+        try:
+            ctx = impl.read_bytes()[:6000].decode("utf-8", errors="replace")
+        except OSError:
+            ctx = ""
+        failed_files = extract_files_from_error(err_trace)
+        for f in failed_files:
+            fp = Path(f)
+            if fp.is_file():
+                try:
+                    content = fp.read_text(encoding="utf-8", errors="replace")
+                    ctx += f"\n=== {f} ===\n{content}"
+                except OSError:
+                    pass
+
+    return ctx[:30000]
+
+
+def build_loop_context(loop_type: str) -> str:
+    """루프 타입별 진입 컨텍스트 구성. 8KB 캡."""
+    ctx = ""
+
+    # 공통: 기술 스택 + .env 존재 여부
+    pkg_json = Path("package.json")
+    if pkg_json.exists():
+        try:
+            data = json.loads(pkg_json.read_text())
+            deps = list(data.get("dependencies", {}).keys())[:10]
+            dev_deps = list(data.get("devDependencies", {}).keys())[:5]
+            all_deps = deps + dev_deps
+            if all_deps:
+                ctx += "\n=== 기술 스택 ===\n" + "\n".join(all_deps)
+        except Exception:
+            pass
+
+    env_example = Path(".env.example")
+    env_file = Path(".env")
+    if env_example.exists():
+        try:
+            keys = re.findall(r"^[A-Z_]+", env_example.read_text(), re.MULTILINE)[:10]
+            if keys:
+                ctx += "\n=== 환경변수 키 목록 ===\n" + "\n".join(keys)
+        except OSError:
+            pass
+    elif env_file.exists():
+        ctx += "\n=== .env 존재 ===\n(.env 파일 있음 — 내용 생략)"
+
+    if loop_type == "design":
+        comp_dir = Path("src/components")
+        if comp_dir.is_dir():
+            try:
+                components = sorted(
+                    str(p) for p in comp_dir.rglob("*.tsx")
+                )[:20]
+                components += sorted(
+                    str(p) for p in comp_dir.rglob("*.ts")
+                )[:20]
+                components = sorted(set(components))[:20]
+                if components:
+                    ctx += "\n=== src/components/ 트리 ===\n" + "\n".join(components)
+            except OSError:
+                pass
+        if Path("tailwind.config.ts").exists() or Path("tailwind.config.js").exists():
+            ctx += "\n=== tailwind config 존재 ===\n(tailwind.config.ts/js 있음)"
+
+    elif loop_type == "bugfix":
+        r = _git("log", "--oneline", "-5")
+        if r.returncode == 0 and r.stdout.strip():
+            ctx += "\n=== 최근 커밋 5개 ===\n" + r.stdout.strip()
+        r = _git("diff", "HEAD", "--stat")
+        if r.returncode == 0 and r.stdout.strip():
+            stat_lines = r.stdout.strip().splitlines()[-5:]
+            ctx += "\n=== 현재 변경 통계 ===\n" + "\n".join(stat_lines)
+
+    elif loop_type == "plan":
+        docs_dir = Path("docs")
+        if docs_dir.is_dir():
+            try:
+                docs = sorted(str(p) for p in docs_dir.rglob("*.md"))[:15]
+                if docs:
+                    ctx += "\n=== docs/ 문서 목록 ===\n" + "\n".join(docs)
+            except OSError:
+                pass
+        backlog = Path("backlog.md")
+        if backlog.exists():
+            try:
+                lines = backlog.read_text(encoding="utf-8").splitlines()[:30]
+                ctx += "\n=== backlog.md (첫 30줄) ===\n" + "\n".join(lines)
+            except OSError:
+                pass
+
+    # impl은 build_smart_context()가 담당 — 추가 컨텍스트 없음
+
+    return ctx[:8192]
+
+
+def build_validator_context(impl_file: str | Path) -> str:
+    """validator용 impl + git diff 컨텍스트. 20KB 캡."""
+    ctx = ""
+    impl_path = Path(impl_file)
+    if impl_path.exists():
+        try:
+            ctx = impl_path.read_bytes()[:10000].decode("utf-8", errors="replace")
+        except OSError:
+            pass
+
+    r = _git("diff", "HEAD")
+    if r.returncode == 0 and r.stdout.strip():
+        diff_chunk = r.stdout[:15000]
+        ctx += f"\n\n=== git diff (changed files) ===\n{diff_chunk}"
+
+    return ctx[:20000]
+
+
+def explore_instruction(out_dir: str, hint_file: str = "", handoff_path: str = "") -> str:
+    """에이전트 자율 탐색 지시 템플릿. handoff_path가 있으면 인수인계 문서 우선."""
+    instr = (
+        f"이전 시도의 출력 파일이 아래 경로에 있다:\n"
+        f"  {out_dir}/\n"
+        f"ls로 attempt-N/ 디렉토리를 확인하고, 각 attempt의 meta.json을 먼저 읽어 개요를 파악하라.\n"
+        f"이후 필요한 파일만 선택적으로 읽어라.\n"
+        f"[탐색 예산] 최대 5개 파일, 합계 100KB 이내. 초과 금지."
+    )
+    if hint_file:
+        instr += f"\n힌트: {hint_file} 에 직접적인 실패 정보가 있다."
+    if handoff_path:
+        instr = (
+            f"인수인계 문서를 먼저 읽어라:\n"
+            f"  {handoff_path}\n"
+            f"이 문서에 변경 요약, 결정 사항, 확인할 것이 정리돼 있다.\n"
+            f"상세 로그가 필요하면 {out_dir}/ 참조.\n"
+            f"[탐색 예산] 최대 5개 파일, 합계 100KB 이내."
+        )
+    return instr
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 8.5 Handoff 문서 생성 — 에이전트 간 구조화된 인수인계
+# ═══════════════════════════════════════════════════════════════════════
+
+def generate_handoff(
+    from_agent: str,
+    to_agent: str,
+    agent_output: str,
+    impl_file: str,
+    attempt: int,
+    issue_num: str | int = "",
+    changed_files: Optional[List[str]] = None,
+    acceptance_criteria: Optional[List[str]] = None,
+) -> str:
+    """에이전트 출력 + git diff에서 handoff 문서 자동 생성.
+
+    에이전트가 직접 작성하지 않음 — 하네스가 자동 생성.
+    """
+    ts = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime())
+
+    # 변경 파일 목록 (미제공 시 git diff에서 추출)
+    if changed_files is None:
+        r = _git("diff", "HEAD~1", "--stat")
+        if r.returncode == 0 and r.stdout.strip():
+            changed_files = [
+                line.split("|")[0].strip()
+                for line in r.stdout.strip().splitlines()[:-1]  # 마지막 summary 줄 제외
+                if "|" in line
+            ]
+        else:
+            changed_files = []
+
+    # 결정 사항 추출 (에이전트 출력에서 키워드 주변 문장)
+    decisions: List[str] = []
+    cautions: List[str] = []
+    for line in agent_output.splitlines():
+        line_lower = line.lower().strip()
+        if not line_lower:
+            continue
+        # 결정 키워드
+        if any(kw in line_lower for kw in ("결정:", "선택:", "트레이드오프:", "이유:", "decision:", "chose")):
+            decisions.append(f"- {line.strip()}")
+        # 주의 키워드
+        if any(kw in line_lower for kw in ("주의:", "warning:", "caution:", "주의사항", "변경 금지", "삭제 금지")):
+            cautions.append(f"- {line.strip()}")
+
+    # SPEC_GAP 갭 목록 추출
+    gaps: List[str] = []
+    in_gap = False
+    for line in agent_output.splitlines():
+        if "SPEC_GAP_FOUND" in line:
+            in_gap = True
+            continue
+        if in_gap:
+            stripped = line.strip()
+            if stripped.startswith(("1.", "2.", "3.", "4.", "5.", "-", "*")):
+                gaps.append(f"- {stripped.lstrip('0123456789.-* ')}")
+            elif stripped.startswith("요청:") or stripped.startswith("request:"):
+                break
+            elif not stripped:
+                if gaps:
+                    break
+
+    # 문서 조립
+    sections: List[str] = []
+    sections.append(f"# Handoff: {from_agent} → {to_agent}")
+    sections.append(f"attempt: {attempt}")
+    sections.append(f"timestamp: {ts}")
+    if impl_file:
+        sections.append(f"impl: {impl_file}")
+    if issue_num:
+        sections.append(f"issue: #{issue_num}")
+    sections.append("")
+
+    # 변경 요약
+    sections.append("## 변경 요약")
+    if changed_files:
+        for f in changed_files[:10]:
+            sections.append(f"- {f}")
+    else:
+        sections.append("- (변경 파일 정보 없음)")
+    sections.append("")
+
+    # 결정 사항
+    if decisions:
+        sections.append("## 결정 사항")
+        sections.extend(decisions[:5])
+        sections.append("")
+
+    # 주의 사항
+    if cautions:
+        sections.append("## 주의 사항")
+        sections.extend(cautions[:5])
+        sections.append("")
+
+    # SPEC_GAP 갭 목록
+    if gaps:
+        sections.append("## SPEC_GAP 항목")
+        sections.extend(gaps[:5])
+        sections.append("")
+
+    # 다음 단계에서 확인할 것 (수용 기준 기반)
+    sections.append("## 다음 단계에서 확인할 것")
+    if acceptance_criteria:
+        for ac in acceptance_criteria[:8]:
+            sections.append(f"- {ac}")
+    elif changed_files:
+        sections.append(f"- 변경된 파일({len(changed_files)}개)의 기능이 정상 동작하는지 확인")
+    else:
+        sections.append("- (수용 기준 정보 없음 — impl 파일 참조)")
+
+    return "\n".join(sections) + "\n"
+
+
+def write_handoff(
+    state_dir: "StateDir",
+    prefix: str,
+    attempt: int,
+    from_agent: str,
+    to_agent: str,
+    content: str,
+) -> Path:
+    """handoff 문서를 파일로 저장하고 경로 반환."""
+    handoff_dir = state_dir.path / f"{prefix}_handoffs" / f"attempt-{attempt}"
+    handoff_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{from_agent}-to-{to_agent}.md"
+    path = handoff_dir / filename
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 9. 히스토리 관리
+# ═══════════════════════════════════════════════════════════════════════
+
+def write_attempt_meta(meta_file: str | Path, **kwargs: Any) -> None:
+    """attempt 결과 meta.json 기록 (json 모듈, jq 불필요)."""
+    ts = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime())
+    data = {
+        "attempt": kwargs.get("attempt", 0),
+        "timestamp": ts,
+        "loop": kwargs.get("loop", ""),
+        "depth": kwargs.get("depth", ""),
+        "result": kwargs.get("result", ""),
+        "fail_type": kwargs.get("fail_type", ""),
+        "failed_tests": kwargs.get("failed_tests", ""),
+        "changed_files": kwargs.get("changed_files", ""),
+        "agent_sequence": kwargs.get("agent_sequence", ""),
+        "error_summary_oneline": kwargs.get("error_summary", ""),
+        "next_action_hints": kwargs.get("next_hints", ""),
+    }
+    # attempt를 int로 변환 시도
+    try:
+        data["attempt"] = int(data["attempt"])
+    except (ValueError, TypeError):
+        pass
+
+    try:
+        Path(meta_file).write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def prune_history(loop_dir: str | Path, max_runs: int = 5) -> None:
+    """히스토리 정리.
+
+    - run_* 디렉토리 N개 초과 → 오래된 run의 .out/.log 삭제 (meta.json + .prompt 보존)
+    - 레거시 attempt-* 동일 처리
+    - design round-* 3개 초과 → 오래된 round의 screenshots/ + 로그 삭제
+    - 단일 로그 > 50KB → 마지막 500줄만 유지
+    - 전체 history/ > 5MB → 오래된 로그 삭제
+    """
+    loop_dir = Path(loop_dir)
+    if not loop_dir.is_dir():
+        return
+
+    # 조건 1: run_* 디렉토리
+    runs = sorted(loop_dir.glob("run_*"), key=lambda p: p.name)
+    if len(runs) > max_runs:
+        for old_run in runs[: len(runs) - max_runs]:
+            for f in old_run.rglob("*"):
+                if f.is_file() and f.name not in ("meta.json",) and not f.suffix == ".prompt":
+                    f.unlink(missing_ok=True)
+
+    # 레거시: attempt-* 직접 있는 경우
+    attempts = sorted(loop_dir.glob("attempt-*"), key=lambda p: p.name)
+    if len(attempts) > max_runs:
+        for old_att in attempts[: len(attempts) - max_runs]:
+            for f in old_att.rglob("*"):
+                if f.is_file() and f.name != "meta.json":
+                    f.unlink(missing_ok=True)
+
+    # design round-* 3개 초과
+    rounds = sorted(loop_dir.glob("round-*"), key=lambda p: p.name)
+    if len(rounds) > 3:
+        for old_round in rounds[: len(rounds) - 3]:
+            screenshots_dir = old_round / "screenshots"
+            if screenshots_dir.is_dir():
+                import shutil
+                shutil.rmtree(screenshots_dir, ignore_errors=True)
+            for f in old_round.rglob("*"):
+                if f.is_file() and f.name not in ("meta.json", "critic.log"):
+                    f.unlink(missing_ok=True)
+
+    # 단일 로그 > 50KB → 마지막 500줄만 유지
+    for logf in loop_dir.rglob("*.log"):
+        try:
+            if logf.stat().st_size > 50 * 1024:
+                lines = logf.read_text(encoding="utf-8", errors="replace").splitlines()
+                logf.write_text("\n".join(lines[-500:]) + "\n", encoding="utf-8")
+        except OSError:
+            pass
+
+    # 전체 history/ > 5MB → 오래된 로그 삭제
+    hist_root = loop_dir.parent
+    try:
+        total_size = sum(f.stat().st_size for f in hist_root.rglob("*") if f.is_file())
+        if total_size > 5 * 1024 * 1024:
+            log_files = sorted(hist_root.rglob("*.log"), key=lambda p: p.name)
+            for lf in log_files[:5]:
+                lf.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 10. 유틸
+# ═══════════════════════════════════════════════════════════════════════
+
+def hlog(msg: str, state_dir: Optional[StateDir] = None, prefix: str = "") -> None:
+    """타임스탬프 디버그 로그. bash의 hlog()와 동일 — tee -a 방식."""
+    ts = time.strftime("%H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line)
+
+    # 로그 파일 경로: HLOG env → state_dir → prefix 폴백 (bash와 동일 우선순위)
+    log_path_str = os.environ.get("HLOG", "")
+    if log_path_str:
+        log_path: Optional[Path] = Path(log_path_str)
+    elif state_dir:
+        log_path = state_dir.path / f"{state_dir.prefix}-harness-debug.log"
+    elif prefix:
+        # bash: ${STATE_DIR}/${PREFIX:-mb}-harness-debug.log 폴백
+        log_path = Path("/tmp") / f"{prefix}-harness-debug.log"
+    else:
+        log_path = None
+
+    if log_path:
+        try:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        except OSError:
+            pass
+
+
+def kill_check(state_dir: StateDir) -> None:
+    """kill 신호 확인 → sys.exit.
+    Phase 3: 전역 신호 `.global.json.harness_kill` 우선. 레거시 플래그 파일도 지원.
+    """
+    killed = False
+    # Phase 3: global signal
+    try:
+        _hooks_dir = Path.home() / ".claude" / "hooks"
+        if str(_hooks_dir) not in sys.path:
+            sys.path.insert(0, str(_hooks_dir))
+        import session_state as _ss  # type: ignore
+        if _ss.get_global_signal().get("harness_kill"):
+            killed = True
+            _ss.set_global_signal(harness_kill=None)  # consume
+    except Exception:
+        pass
+    # 레거시 플래그 파일 (하위호환)
+    if state_dir.flag_exists(Flag.HARNESS_KILL):
+        killed = True
+        state_dir.flag_rm(Flag.HARNESS_KILL)
+    if killed:
+        state_dir.flag_rm(Flag.HARNESS_ACTIVE)
+        os.environ["HARNESS_RESULT"] = "HARNESS_KILLED"
+        print("HARNESS_KILLED: 사용자 요청으로 중단됨")
+        sys.exit(0)
+
+
+def detect_depth(impl_file: str | Path) -> str:
+    """frontmatter depth: 파싱."""
+    impl = Path(impl_file)
+    if not impl.exists():
+        return "std"
+    try:
+        content = impl.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "std"
+
+    # YAML frontmatter --- ... --- 블록 내 depth: 필드
+    in_frontmatter = False
+    fence_count = 0
+    for line in content.splitlines():
+        if line.strip() == "---":
+            fence_count += 1
+            if fence_count == 1:
+                in_frontmatter = True
+                continue
+            elif fence_count == 2:
+                break
+        if in_frontmatter:
+            m = re.match(r"^depth:\s*(\S+)", line)
+            if m:
+                val = re.sub(r"\s*#.*", "", m.group(1))
+                if val in ("simple", "std", "deep"):
+                    return val
+                return "std"
+    return "std"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 11. Plan/Design Validation
+# ═══════════════════════════════════════════════════════════════════════
+
+def run_plan_validation(
+    impl_file: str,
+    issue_num: str | int,
+    prefix: str,
+    max_rework: int = 1,
+    state_dir: Optional[StateDir] = None,
+    run_logger: Optional[RunLogger] = None,
+    config: Optional[HarnessConfig] = None,
+    handoff_path: Optional[str] = None,
+) -> bool:
+    """Plan Validation 실행. True=PASS, False=ESCALATE."""
+    if state_dir is None:
+        state_dir = StateDir(Path.cwd(), prefix)
+
+    val_out = str(state_dir.path / f"{prefix}_val_pv_out.txt")
+
+    handoff_hint = f"\n인수인계 문서: {handoff_path}" if handoff_path else ""
+    print("[HARNESS] Plan Validation")
+    agent_call(
+        "validator", 300,
+        f"@MODE:VALIDATOR:PLAN_VALIDATION\nimpl: {impl_file} issue: #{issue_num}{handoff_hint}",
+        val_out, run_logger, config,
+    )
+    val_result = parse_marker(val_out, "PLAN_VALIDATION_PASS|PLAN_VALIDATION_FAIL|PASS|FAIL")
+    if val_result == "PLAN_VALIDATION_PASS":
+        val_result = "PASS"
+    if val_result == "PLAN_VALIDATION_FAIL":
+        val_result = "FAIL"
+    print(f"[HARNESS] Plan Validation 결과: {val_result}")
+
+    if val_result == "PASS":
+        state_dir.flag_touch(Flag.PLAN_VALIDATION_PASSED)
+        # Handoff: validator → engineer
+        try:
+            val_content = Path(val_out).read_text(encoding="utf-8", errors="replace")
+            _val_handoff = generate_handoff(
+                "validator", "engineer", val_content,
+                impl_file, 0, str(issue_num),
+            )
+            write_handoff(state_dir, prefix, 0, "validator", "engineer", _val_handoff)
+            if run_logger:
+                run_logger.log_event({
+                    "event": "handoff", "from": "validator", "to": "engineer",
+                    "t": int(time.time()),
+                })
+        except OSError:
+            pass
+        return True
+
+    # FAIL → architect 재보강
+    for rework in range(1, max_rework + 1):
+        kill_check(state_dir)
+        print(f"[HARNESS] Plan Validation FAIL → architect 재보강 ({rework}/{max_rework})")
+        fail_feedback = ""
+        try:
+            lines = Path(val_out).read_text().splitlines()
+            fail_feedback = "\n".join(lines[-20:])
+        except OSError:
+            pass
+
+        arch_out = str(state_dir.path / f"{prefix}_arch_fix_out.txt")
+        agent_call(
+            "architect", 900,
+            f"@MODE:ARCHITECT:SPEC_GAP\nPlan Validation FAIL 피드백 반영. impl: {impl_file} feedback: {fail_feedback}",
+            arch_out, run_logger, config,
+        )
+        kill_check(state_dir)
+
+        val_out2 = str(state_dir.path / f"{prefix}_val_pv_out{rework}.txt")
+        agent_call(
+            "validator", 300,
+            f"@MODE:VALIDATOR:PLAN_VALIDATION\nimpl: {impl_file} issue: #{issue_num}",
+            val_out2, run_logger, config,
+        )
+        val_result = parse_marker(val_out2, "PLAN_VALIDATION_PASS|PLAN_VALIDATION_FAIL|PASS|FAIL")
+        if val_result == "PLAN_VALIDATION_PASS":
+            val_result = "PASS"
+        if val_result == "PLAN_VALIDATION_FAIL":
+            val_result = "FAIL"
+        print(f"[HARNESS] Plan Validation 재검증 결과: {val_result}")
+
+        if val_result == "PASS":
+            state_dir.flag_touch(Flag.PLAN_VALIDATION_PASSED)
+            return True
+
+    return False
+
+
+def run_design_validation(
+    design_doc: str,
+    issue_num: str | int,
+    prefix: str,
+    max_rework: int = 1,
+    state_dir: Optional[StateDir] = None,
+    run_logger: Optional[RunLogger] = None,
+    config: Optional[HarnessConfig] = None,
+) -> bool:
+    """Design Validation 실행. True=PASS, False=ESCALATE."""
+    if state_dir is None:
+        state_dir = StateDir(Path.cwd(), prefix)
+
+    val_out = str(state_dir.path / f"{prefix}_val_dv_out.txt")
+
+    print("[HARNESS] Design Validation")
+    agent_call(
+        "validator", 300,
+        f"@MODE:VALIDATOR:DESIGN_VALIDATION\ndesign_doc: {design_doc} issue: #{issue_num}",
+        val_out, run_logger, config,
+    )
+    val_result = parse_marker(val_out, "DESIGN_REVIEW_PASS|DESIGN_REVIEW_FAIL|PASS|FAIL")
+    if val_result == "DESIGN_REVIEW_PASS":
+        val_result = "PASS"
+    if val_result == "DESIGN_REVIEW_FAIL":
+        val_result = "FAIL"
+    print(f"[HARNESS] Design Validation 결과: {val_result}")
+
+    if val_result == "PASS":
+        return True
+
+    for rework in range(1, max_rework + 1):
+        kill_check(state_dir)
+        print(f"[HARNESS] Design Validation FAIL → architect 재설계 ({rework}/{max_rework})")
+        fail_feedback = ""
+        try:
+            lines = Path(val_out).read_text().splitlines()
+            fail_feedback = "\n".join(lines[-20:])
+        except OSError:
+            pass
+
+        arch_out = str(state_dir.path / f"{prefix}_arch_dv_fix_out.txt")
+        agent_call(
+            "architect", 900,
+            f"@MODE:ARCHITECT:SYSTEM_DESIGN\n재설계 — Design Validation FAIL 피드백 반영. design_doc: {design_doc} feedback: {fail_feedback}",
+            arch_out, run_logger, config,
+        )
+        kill_check(state_dir)
+
+        val_out2 = str(state_dir.path / f"{prefix}_val_dv_out{rework}.txt")
+        agent_call(
+            "validator", 300,
+            f"@MODE:VALIDATOR:DESIGN_VALIDATION\ndesign_doc: {design_doc} issue: #{issue_num}",
+            val_out2, run_logger, config,
+        )
+        val_result = parse_marker(val_out2, "DESIGN_REVIEW_PASS|DESIGN_REVIEW_FAIL|PASS|FAIL")
+        if val_result == "DESIGN_REVIEW_PASS":
+            val_result = "PASS"
+        if val_result == "DESIGN_REVIEW_FAIL":
+            val_result = "FAIL"
+        print(f"[HARNESS] Design Validation 재검증 결과: {val_result}")
+
+        if val_result == "PASS":
+            return True
+
+    return False
+
+
+def run_ux_validation(
+    ux_flow_doc: str,
+    prd_path: str,
+    issue_num: str | int,
+    prefix: str,
+    max_rework: int = 1,
+    state_dir: Optional[StateDir] = None,
+    run_logger: Optional[RunLogger] = None,
+    config: Optional[HarnessConfig] = None,
+) -> bool:
+    """UX Validation 실행. True=PASS, False=ESCALATE."""
+    if state_dir is None:
+        state_dir = StateDir(Path.cwd(), prefix)
+
+    val_out = str(state_dir.path / f"{prefix}_val_ux_out.txt")
+
+    print("[HARNESS] UX Validation")
+    agent_call(
+        "validator", 300,
+        f"@MODE:VALIDATOR:UX_VALIDATION\nux_flow_doc: {ux_flow_doc}\nprd_path: {prd_path}\nissue: #{issue_num}",
+        val_out, run_logger, config,
+    )
+    val_result = parse_marker(val_out, "UX_REVIEW_PASS|UX_REVIEW_FAIL|PASS|FAIL")
+    if val_result == "UX_REVIEW_PASS":
+        val_result = "PASS"
+    if val_result == "UX_REVIEW_FAIL":
+        val_result = "FAIL"
+    print(f"[HARNESS] UX Validation 결과: {val_result}")
+
+    if val_result == "PASS":
+        return True
+
+    for rework in range(1, max_rework + 1):
+        kill_check(state_dir)
+        print(f"[HARNESS] UX Validation FAIL -> ux-architect 재설계 ({rework}/{max_rework})")
+        fail_feedback = ""
+        try:
+            lines = Path(val_out).read_text().splitlines()
+            fail_feedback = "\n".join(lines[-20:])
+        except OSError:
+            pass
+
+        uxa_out = str(state_dir.path / f"{prefix}_uxa_fix_out.txt")
+        agent_call(
+            "ux-architect", 600,
+            f"@MODE:UX_ARCHITECT:UX_FLOW\nprd_path: {prd_path}\n"
+            f"재설계 -- UX Validation FAIL 피드백 반영. feedback: {fail_feedback}",
+            uxa_out, run_logger, config,
+        )
+        kill_check(state_dir)
+
+        val_out2 = str(state_dir.path / f"{prefix}_val_ux_out{rework}.txt")
+        agent_call(
+            "validator", 300,
+            f"@MODE:VALIDATOR:UX_VALIDATION\nux_flow_doc: {ux_flow_doc}\nprd_path: {prd_path}\nissue: #{issue_num}",
+            val_out2, run_logger, config,
+        )
+        val_result = parse_marker(val_out2, "UX_REVIEW_PASS|UX_REVIEW_FAIL|PASS|FAIL")
+        if val_result == "UX_REVIEW_PASS":
+            val_result = "PASS"
+        if val_result == "UX_REVIEW_FAIL":
+            val_result = "FAIL"
+        print(f"[HARNESS] UX Validation 재검증 결과: {val_result}")
+
+        if val_result == "PASS":
+            return True
+
+    return False
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Internal helpers
+# ═══════════════════════════════════════════════════════════════════════
+
+def _detect_prefix() -> str:
+    """현재 디렉토리의 prefix 감지 (agent_call 내부용)."""
+    config_path = Path.cwd() / ".claude" / "harness.config.json"
+    if config_path.exists():
+        try:
+            data = json.loads(config_path.read_text())
+            p = data.get("prefix")
+            if p:
+                return p
+        except Exception:
+            pass
+    raw = Path.cwd().name.lower()
+    return re.sub(r"[^a-z0-9]", "", raw)[:8] or "proj"
