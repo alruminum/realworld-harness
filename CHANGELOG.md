@@ -21,6 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
-## [0.1.0-alpha] — TBD
+## [0.1.0-alpha] — 2026-04-27 (개발 중, git tag 미생성)
 
 플러그인 배포판 첫 알파. `~/.claude/` 시스템을 클린 구조로 마이그레이션 + 거버넌스 자동 게이트 활성화.
+
+> 알파 작업 시작일 2026-04-27. 정식 v0.1.0-alpha tag + GitHub Release 는 Phase 4(public 전환) 시점에 생성 예정.

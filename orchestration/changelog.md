@@ -19,6 +19,7 @@
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | docs | Phase 3 [3.10] quickstart §0 옵션 B (RWHarness repo 직접) + C (~/.claude 폴백) 분리 — `~/.claude/scripts/setup-project.sh` 부재 사용자 첫 실패 정정 | — |
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | infra | Phase 3 [3.11] setup-project.sh `.gitignore` 자동 등록에 `.claude/harness-state/` 추가 — quickstart §1 실측 시 디버그 로그 untracked 발견 | — |
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | infra | Phase 3 [3.12] worktree 격리 기본값 활성화 — config.py 기본값/폴백 + setup-project.sh 누락 시 자동 추가 | — |
+| `HARNESS-CHG-20260427-04` | 2026-04-27 | docs | Phase 3 [3.13] README + CHANGELOG 점검 패치 — Phase 표 갱신 + install 섹션 명확화 + alpha 시작일 명시 | — |
 
 ---
 
