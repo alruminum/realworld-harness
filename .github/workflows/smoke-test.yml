@@ -1,0 +1,32 @@
+name: Smoke Test
+
+# 별도 머신(GitHub-hosted ubuntu-latest) 환경에서 자동 검증.
+# push 또는 PR 시 트리거 → ~/.claude 없는 ubuntu 컨테이너에서 폴백 모드 + 플러그인 모드 두 가지 검증.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke:
+    name: scripts/smoke-test.sh (ubuntu-latest)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Smoke test — 폴백 모드 (CLAUDE_PLUGIN_ROOT 미설정)
+        run: bash scripts/smoke-test.sh
+
+      - name: Smoke test — 플러그인 모드 (CLAUDE_PLUGIN_ROOT=$GITHUB_WORKSPACE)
+        env:
+          CLAUDE_PLUGIN_ROOT: ${{ github.workspace }}
+        run: bash scripts/smoke-test.sh
