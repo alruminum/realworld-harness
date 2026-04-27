@@ -65,4 +65,43 @@
 
 ---
 
+---
+
+## `HARNESS-CHG-20260427-02` — 2026-04-27
+
+### Rationale
+
+Phase 0(부트스트랩)이 완료된 시점(`HARNESS-CHG-20260427-01`)에서 Phase 1(코어 마이그레이션)의 *진입 계획*을 명시화한다. ~/.claude의 활성 코드를 한 번에 다 옮기지 않고 sub-section으로 쪼갠 이유는 (1) 이력 추적성 — 매 commit이 단일 책임을 가짐, (2) 회복 가능성 — 중간 단계에서 문제 발생 시 단일 sub-section만 재작업, (3) 유저 명시 요청 — "phase별이나 섹션별로 커밋은 알아서 잘 해주면 좋겠어 나중에 이력파악되게".
+
+### Alternatives
+
+| # | 옵션 | 평가 |
+|---|---|---|
+| 1 | Phase 1 전체를 단일 거대 commit으로 처리 | 제외 — 이력 추적성 0, 중간 회복 어려움 |
+| 2 | sub-section을 Task-ID 분리 (1.2 → CHG-03, 1.3 → CHG-04, …) | 거버넌스 표 비대화. 9개 sub-section이라 부담 |
+| **3** | sub-section을 sub-commit으로, Task-ID 1개 공유 | **선택**. 이력 추적 + 거버넌스 단순. 각 commit msg에 sub-section 번호 명시 |
+
+### Decision
+
+옵션 3 채택. `HARNESS-CHG-20260427-02` 산하 sub-commit 형식:
+
+```
+HARNESS-CHG-20260427-02 [1.2] hooks/ 마이그레이션 (활성 22개 + 공유 유틸 4개)
+HARNESS-CHG-20260427-02 [1.3] harness/ 마이그레이션 (Python 11개 + Shell 8개)
+...
+```
+
+추가 결정:
+- **`orchestration/` 디렉토리 충돌 회피**: ~/.claude/orchestration/policies.md를 RWHarness/orchestration/policies.md로 그대로 복사하면 RWHarness의 거버넌스 policies.md(2026-04-27 신규 작성, Task-ID 룰)와 충돌. → `orchestration/upstream/` 서브디렉토리로 분리 복사.
+- **경로 추상화는 Phase 1.7 일괄 적용**: 1.2~1.6에서 *원본 그대로 복사*하고, 1.7에서 일괄 sed/grep으로 `Path.home()` → `Path(os.environ.get('CLAUDE_PLUGIN_ROOT', Path.home() / '.claude'))` 변환. 이유: 코드 정확성 검증을 *복사*와 *변환* 두 단계로 분리.
+- **개인용 파일 검증은 Phase 1 종료 시 grep**: 1.2~1.6 진행 중엔 직관적으로 제외. 종료 시점에 `grep -ri "hardcarry|softcarry|dongchan"` 으로 누락 검증 (`docs/migration-plan.md §6` 체크리스트).
+
+### Follow-Up
+
+- 1.2 ~ 1.9 sub-commit 9개 (각 sub-commit마다 `orchestration/changelog.md` row 갱신은 생략 — Task-ID 단위 묶음 관리. 단, sub-commit msg에 `[1.X]` 표기 필수)
+- Phase 1 종료 시점에 `HARNESS-CHG-20260427-02` 의 본 changelog 항목에 sub-commit 결과 요약 추가
+- 검증 체크리스트(migration-plan.md §6) 모두 ✓ 후 Phase 2 진입 (`HARNESS-CHG-2026MMDD-NN` 신규 발급)
+
+---
+
 > 새 항목은 위 형식으로 추가. Task-ID 헤더는 H2(`##`), 4섹션은 H3(`###`).
