@@ -65,7 +65,7 @@ LLM 기반 에이전트가 똑똑해질수록, 단일 거대 에이전트에게 
 /plugin marketplace add alruminum/realworld-harness
 /plugin install realworld-harness
 # Claude Code 재시작 → hooks/hooks.json 자동 활성화
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-project.sh"
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-rwh.sh"
 ```
 
 ### B. 개발 폴백 (현재 사용 가능 — clone 후 직접 사용)
@@ -73,7 +73,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-project.sh"
 ```bash
 git clone https://github.com/alruminum/realworld-harness.git
 export CLAUDE_PLUGIN_ROOT="$(pwd)/realworld-harness"
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-project.sh"
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-rwh.sh"
 ```
 
 자세한 검증 절차: [`docs/smoke-test-guide.md`](docs/smoke-test-guide.md), [`docs/e2e-quickstart.md`](docs/e2e-quickstart.md)

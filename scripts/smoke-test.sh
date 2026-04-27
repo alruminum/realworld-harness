@@ -16,7 +16,7 @@
 #  5. PLUGIN_ROOT 명시 동작
 #  6. agent_tiers 매핑 (architect/engineer/qa/unknown)
 #  7. check_doc_sync.py 분류기 단위 테스트
-#  8. setup-project.sh + scripts/hooks/pre-commit.sh syntax
+#  8. setup-rwh.sh + scripts/hooks/pre-commit.sh syntax
 #  9. hooks/ 의 sys.path 트릭으로 harness_common 등 import 가능
 # 10. SKIP_DOC_SYNC env 우회 동작 (pre-commit.sh)
 #
@@ -123,7 +123,7 @@ print(f'OK: {len(cases)}/{len(cases)} 통과')
 
 echo ""
 echo "[6] Shell 스크립트 syntax"
-run "scripts/setup-project.sh" bash -n scripts/setup-project.sh
+run "scripts/setup-rwh.sh" bash -n scripts/setup-rwh.sh
 run "scripts/hooks/pre-commit.sh" bash -n scripts/hooks/pre-commit.sh
 run "scripts/smoke-test.sh (self)" bash -n scripts/smoke-test.sh
 

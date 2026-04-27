@@ -56,7 +56,7 @@ SKILL_LEVELS: Dict[str, str] = {
     "ux": "medium",
     "qa": "medium",
     "product-plan": "medium",
-    "init-project": "medium",
+    "init-rwh": "medium",
 
     # ── heavy: 장시간 루프 ───────────────────────────────────────────
     "ralph": "heavy",

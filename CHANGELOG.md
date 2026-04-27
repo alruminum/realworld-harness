@@ -45,7 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - GitHub Actions doc-sync workflow 가동 (PR 단계 자동 게이트)
 
 ### 알려진 부채 (v0.2.0 이후 정리 대상)
-- `setup-project.sh` 의 글로벌 settings.json hooks 등록 영역에 플러그인 모드 분기 미적용 (잠재 중복 등록 가능성, 다만 "이미 등록됨" 스킵 로직으로 안전)
+- `setup-rwh.sh` 의 글로벌 settings.json hooks 등록 영역에 플러그인 모드 분기 미적용 (잠재 중복 등록 가능성, 다만 "이미 등록됨" 스킵 로직으로 안전)
 - BATS → pytest 잔여 마이그레이션 (차단 요소 X)
 - Node.js 20 deprecation (액션 자체 Node 24 호환되면 env 제거)
 

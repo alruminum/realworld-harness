@@ -16,14 +16,16 @@
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | infra | Phase 3 [3.7] GitHub Actions smoke-test.yml — 별도 머신(ubuntu) 자동 검증 (폴백 + 플러그인 모드) | — |
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | infra | Phase 3 [3.8] Node 20 deprecation 우회 — workflows env FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 추가 (smoke-test + doc-sync) | — |
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | docs | Phase 3 [3.9] E2E quickstart — 30분 검증 경로 (`/quick` 루프 + 거버넌스 게이트 + agent_tiers override) | — |
-| `HARNESS-CHG-20260427-04` | 2026-04-27 | docs | Phase 3 [3.10] quickstart §0 옵션 B (RWHarness repo 직접) + C (~/.claude 폴백) 분리 — `~/.claude/scripts/setup-project.sh` 부재 사용자 첫 실패 정정 | — |
-| `HARNESS-CHG-20260427-04` | 2026-04-27 | infra | Phase 3 [3.11] setup-project.sh `.gitignore` 자동 등록에 `.claude/harness-state/` 추가 — quickstart §1 실측 시 디버그 로그 untracked 발견 | — |
-| `HARNESS-CHG-20260427-04` | 2026-04-27 | infra | Phase 3 [3.12] worktree 격리 기본값 활성화 — config.py 기본값/폴백 + setup-project.sh 누락 시 자동 추가 | — |
+| `HARNESS-CHG-20260427-04` | 2026-04-27 | docs | Phase 3 [3.10] quickstart §0 옵션 B (RWHarness repo 직접) + C (~/.claude 폴백) 분리 — `~/.claude/scripts/setup-rwh.sh` 부재 사용자 첫 실패 정정 | — |
+| `HARNESS-CHG-20260427-04` | 2026-04-27 | infra | Phase 3 [3.11] setup-rwh.sh `.gitignore` 자동 등록에 `.claude/harness-state/` 추가 — quickstart §1 실측 시 디버그 로그 untracked 발견 | — |
+| `HARNESS-CHG-20260427-04` | 2026-04-27 | infra | Phase 3 [3.12] worktree 격리 기본값 활성화 — config.py 기본값/폴백 + setup-rwh.sh 누락 시 자동 추가 | — |
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | docs | Phase 3 [3.13] README + CHANGELOG 점검 패치 — Phase 표 갱신 + install 섹션 명확화 + alpha 시작일 명시 | — |
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | spec | Phase 4 [4.1] release prep — README/CHANGELOG v0.1.0-alpha release-ready 갱신 | — |
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | docs | Phase 4 [4.2] analysis-current-harness.md — historical reference 명시 + §G/§H 결과 갱신 | — |
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | docs | Phase 4 [4.3] historical 자료 4개 삭제 — migration-plan / plan-plugin-distribution / proposals / analysis-current-harness | — |
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | docs | Phase 4 [4.4] git tag `v0.1.0-alpha` push (메타) | — |
+| `HARNESS-CHG-20260427-05` | 2026-04-27 | infra | Phase 4 [4.5] GitHub Release v0.1.0-alpha 생성 (private, 메타) | — |
+| `HARNESS-CHG-20260427-05` | 2026-04-27 | infra | Phase 4 [4.6] rename — `setup-project.sh` → `setup-rwh.sh` + `/init-project` → `/init-rwh` (12 파일 일괄 치환) | — |
 
 ---
 
@@ -110,7 +112,7 @@
 - `[2.5]` `26fdf4f` `scripts/check_doc_sync.py` Python 자동 게이트 (`+219`, 단위 테스트 11/11)
 - `[2.6]` `394dbf5` `scripts/hooks/pre-commit.sh` + `hooks/commit-gate.py` Gate 4 (`+51`)
 - `[2.7]` `d4cdad5` `.github/PULL_REQUEST_TEMPLATE.md` (`+61`)
-- `[2.8]` `e8bb7d0` `scripts/setup-project.sh` PLUGIN_ROOT 적응 + 거버넌스 pre-commit 자동 설치 (`+46/-44`)
+- `[2.8]` `e8bb7d0` `scripts/setup-rwh.sh` PLUGIN_ROOT 적응 + 거버넌스 pre-commit 자동 설치 (`+46/-44`)
 - `[2.9]` (본 commit) Phase 2 종료 + 셀프 검증
 
 **Phase 2 검증 결과**:
@@ -122,7 +124,7 @@
 - ✓ commit-gate.py Gate 4 — cwd 의 scripts/check_doc_sync.py 자동 호출 (없으면 skip)
 - ✓ pre-commit.sh — git hook 진입점, SKIP_DOC_SYNC env 우회
 - ✓ PR 템플릿 — Task-ID + Change-Type + Document Sync 체크리스트 + Document-Exception 섹션
-- ✓ setup-project.sh — HARNESS_ROOT 변수 도입, PLUGIN_ROOT 폴백, BATS rule-audit → 거버넌스 pre-commit 자동 설치
+- ✓ setup-rwh.sh — HARNESS_ROOT 변수 도입, PLUGIN_ROOT 폴백, BATS rule-audit → 거버넌스 pre-commit 자동 설치
 - ✓ **셀프 게이트 검증** — 본 sub-commit 자체가 spec 변경(changelog + rationale 갱신)이며 .git/hooks/pre-commit 활성화 후 게이트 통과 확인
 
 **Linked**:

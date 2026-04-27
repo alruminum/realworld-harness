@@ -23,7 +23,7 @@
 
 ## 2. 훅 흐름도
 
-훅 등록은 플러그인 내장 `hooks/hooks.json` 이 Claude Code 의 install 시 자동 로드된다. 개발 폴백 모드에선 `~/.claude/settings.json` 의 `hooks` 섹션 사용. 카탈로그는 `scripts/setup-project.sh` 코멘트와 본 문서 §2.1 표에 동기화되어 있다.
+훅 등록은 플러그인 내장 `hooks/hooks.json` 이 Claude Code 의 install 시 자동 로드된다. 개발 폴백 모드에선 `~/.claude/settings.json` 의 `hooks` 섹션 사용. 카탈로그는 `scripts/setup-rwh.sh` 코멘트와 본 문서 §2.1 표에 동기화되어 있다.
 
 ### 2.1 이벤트별 훅 체인
 
@@ -182,7 +182,7 @@ HARNESS_INFRA_PATTERNS = [
 }
 ```
 
-각 프로젝트는 절대 경로로 등록. 사용자가 `setup-project.sh` 실행 시 자동 추가된다.
+각 프로젝트는 절대 경로로 등록. 사용자가 `setup-rwh.sh` 실행 시 자동 추가된다.
 
 ### 5.2 활성화 판정 (`harness_common.is_harness_enabled`)
 
@@ -196,7 +196,7 @@ cwd가 화이트리스트 경로 또는 그 서브디렉토리 → True
 
 | 동작 | 방법 |
 |---|---|
-| 등록 | 프로젝트 루트에서 `bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-project.sh"` (개발 폴백: `bash ~/.claude/scripts/setup-project.sh`) |
+| 등록 | 프로젝트 루트에서 `bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-rwh.sh"` (개발 폴백: `bash ~/.claude/scripts/setup-rwh.sh`) |
 | 일괄 보기 | `harness-list` 스킬 |
 | 활성화 | `harness-enable` 스킬 |
 | 해제 | `harness-disable` 스킬 |

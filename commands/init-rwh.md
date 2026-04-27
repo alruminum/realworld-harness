@@ -3,7 +3,7 @@ description: 새 프로젝트 루트에 Harness Engineering 환경을 한 번에
 argument-hint: ""
 ---
 
-# /init-project
+# /init-rwh
 
 빈 폴더(또는 새 프로젝트 루트)에서 Harness Engineering 환경을 한 번에 구성한다.
 

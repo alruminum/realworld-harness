@@ -27,9 +27,9 @@ ls "$RW/hooks/"   # 23개 .py 확인되면 OK
 
 **옵션 C — 기존 ~/.claude 폴백 (RWHarness 마이그레이션 source 사용자)**
 ```bash
-# ~/.claude 의 진짜 init 스크립트 이름은 setup-harness.sh (RWHarness 에선 setup-project.sh)
+# ~/.claude 의 진짜 init 스크립트 이름은 setup-harness.sh (RWHarness 에선 setup-rwh.sh)
 ls ~/.claude/hooks/   # 활성 확인
-# 단, ~/.claude/scripts/setup-project.sh 가 없으니 옵션 B 사용 권장
+# 단, ~/.claude/scripts/setup-rwh.sh 가 없으니 옵션 B 사용 권장
 ```
 
 테스트 프로젝트 생성:
@@ -38,11 +38,11 @@ mkdir -p /tmp/rw-quickstart && cd /tmp/rw-quickstart
 git init -q
 
 # 옵션 B 또는 C: 명시적 경로
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-project.sh"
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-rwh.sh"
 
 # 또는 한 줄 (옵션 B):
 CLAUDE_PLUGIN_ROOT=/path/to/realworld-harness \
-  bash /path/to/realworld-harness/scripts/setup-project.sh
+  bash /path/to/realworld-harness/scripts/setup-rwh.sh
 ```
 
 검증: `.claude/harness.config.json` + `.git/hooks/pre-commit` 생성됨.

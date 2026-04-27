@@ -12,7 +12,7 @@
 2. 모든 Python 파일이 syntax 통과 + import 가능
 3. JSON 파일(hooks.json, plugin.json, marketplace.json) 파싱 가능
 4. `agent_tiers` 매핑 + 사용자 override 동작
-5. `setup-project.sh` 신규 프로젝트 적용 시 정상 산출
+5. `setup-rwh.sh` 신규 프로젝트 적용 시 정상 산출
 6. 거버넌스 자동 게이트 (pre-commit hook + check_doc_sync.py) 동작
 
 ---
@@ -63,7 +63,7 @@ bash scripts/smoke-test.sh
 # 3) 신규 프로젝트 셋업 시뮬레이션
 mkdir /tmp/test-project && cd /tmp/test-project
 git init
-CLAUDE_PLUGIN_ROOT=$OLDPWD bash "$CLAUDE_PLUGIN_ROOT/scripts/setup-project.sh"
+CLAUDE_PLUGIN_ROOT=$OLDPWD bash "$CLAUDE_PLUGIN_ROOT/scripts/setup-rwh.sh"
 
 # 4) 산출물 확인
 ls -la .claude/ .git/hooks/pre-commit
@@ -78,7 +78,7 @@ cat .claude/harness.config.json   # prefix + isolation: worktree 등
 # Claude Code 재시작 (hooks/hooks.json 자동 활성화)
 
 # 새 세션에서:
-/init-project   # → setup-project.sh 호출
+/init-rwh   # → setup-rwh.sh 호출
 ```
 
 검증:
@@ -96,13 +96,13 @@ cat .claude/harness.config.json   # prefix + isolation: worktree 등
 | smoke-test.sh | PASS=50/FAIL=0 |
 | Docker 컨테이너 | ALL PASS |
 | 별도 머신 | ALL PASS + .claude/harness.config.json 생성 |
-| 마켓플레이스 install | hooks/hooks.json 자동 활성화 + setup-project.sh 정상 동작 |
+| 마켓플레이스 install | hooks/hooks.json 자동 활성화 + setup-rwh.sh 정상 동작 |
 
 ---
 
 ## 5. 알려진 부채 (Phase 3+ 정리 대상)
 
-1. **`setup-project.sh` 의 글로벌 settings.json hooks 등록 영역** — 플러그인 모드에선 hooks/hooks.json 자동 로드되므로 글로벌 settings.json 수정이 *중복*. 플러그인 모드 분기 추가 필요.
+1. **`setup-rwh.sh` 의 글로벌 settings.json hooks 등록 영역** — 플러그인 모드에선 hooks/hooks.json 자동 로드되므로 글로벌 settings.json 수정이 *중복*. 플러그인 모드 분기 추가 필요.
 2. **PLUGIN_ROOT 폴백 검증의 cross-platform** — 현재 macOS 기준만 검증. Linux 컨테이너에선 `Path.home()` 동작 확인 필요 (Docker smoke test로 자동 검증).
 3. **GitHub Actions doc-sync workflow** — 첫 PR 발생 시 가동 확인 필요 (현재는 코드만, 실행 검증 미완).
 

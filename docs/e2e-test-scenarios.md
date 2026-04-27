@@ -27,7 +27,7 @@ git clone https://github.com/alruminum/realworld-harness.git ~/realworld-harness
 mkdir -p /tmp/rw-e2e-test && cd /tmp/rw-e2e-test
 git init
 git remote add origin https://github.com/<your>/<test-repo>.git  # 테스트 repo
-bash "${CLAUDE_PLUGIN_ROOT:-${HOME}/.claude}/scripts/setup-project.sh"
+bash "${CLAUDE_PLUGIN_ROOT:-${HOME}/.claude}/scripts/setup-rwh.sh"
 ```
 
 검증:

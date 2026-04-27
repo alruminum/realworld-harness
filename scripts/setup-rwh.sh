@@ -1,9 +1,9 @@
 #!/bin/bash
-# scripts/setup-project.sh — RealWorld Harness 프로젝트 초기화
+# scripts/setup-rwh.sh — RealWorld Harness 프로젝트 초기화
 #
 # 사용법:
-#   bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-project.sh"   # 플러그인 모드
-#   bash ~/.claude/scripts/setup-project.sh                 # 개발/폴백 모드
+#   bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-rwh.sh"   # 플러그인 모드
+#   bash ~/.claude/scripts/setup-rwh.sh                 # 개발/폴백 모드
 #
 # 산출물:
 #   .claude/harness.config.json       (prefix + worktree 격리 + agent_tiers)
