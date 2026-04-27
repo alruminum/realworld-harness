@@ -16,8 +16,5 @@
     "multi-agent"
   ],
   "homepage": "https://github.com/alruminum/realworld-harness",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/alruminum/realworld-harness"
-  }
+  "repository": "https://github.com/alruminum/realworld-harness"
 }

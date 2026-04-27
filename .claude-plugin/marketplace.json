@@ -1,10 +1,29 @@
 {
-  "owner": "alruminum",
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "realworld-harness",
+  "description": "Production-grade Agent Workflow Engine for Claude Code — 5-phase deterministic orchestration of role-specialized agents (PM, UX, architect, engineer, QA, reviewer).",
+  "owner": {
+    "name": "alruminum",
+    "email": "alruminum@gmail.com"
+  },
+  "metadata": {
+    "description": "RealWorld Harness 첫 알파 — workflow 불변 + agent_tiers + Task-ID 거버넌스",
+    "version": "0.1.0-alpha"
+  },
   "plugins": [
     {
       "name": "realworld-harness",
-      "source": ".",
-      "description": "Production-grade Agent Workflow Engine — role-specialized agents with deterministic 5-phase workflow (planner → architect → engineer → validator → reviewer)."
+      "source": "./",
+      "description": "Production-grade Agent Workflow Engine — role-specialized agents with deterministic 5-phase workflow (planner → architect → engineer → validator → reviewer).",
+      "category": "development",
+      "tags": [
+        "agent",
+        "workflow",
+        "orchestration",
+        "harness",
+        "multi-agent",
+        "governance"
+      ]
     }
   ]
 }
