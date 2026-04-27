@@ -231,10 +231,14 @@ if [ -n "$REPO" ]; then
   done
 fi
 
-# ── 전역 settings.json 훅 관리 ──────────────────────────────────────
+# ── 전역 settings.json 훅 관리 (개발 폴백 모드 전용) ──────────────────
+# 플러그인 모드(CLAUDE_PLUGIN_ROOT set)에선 hooks/hooks.json 이 자동 로드되므로
+# 글로벌 settings.json 훅 등록 불필요 + 중복 위험. 개발 폴백 모드에서만 등록.
 # _meta: "harness" 태그가 붙은 훅만 프레임워크가 관리.
 # _meta가 없거나 "user"인 훅은 사용자 훅으로 보존.
-# 새 프레임워크 훅 추가 시 이 스크립트에서 _meta: harness로 등록.
+if [ -n "$CLAUDE_PLUGIN_ROOT" ]; then
+  echo "📦 플러그인 모드 — hooks/hooks.json 자동 로드. 글로벌 settings.json 훅 등록 skip."
+else
 GLOBAL_SETTINGS="${HOME}/.claude/settings.json"
 INJECT_HOOK_MARKER="harness-review-inject.py"
 
@@ -340,6 +344,7 @@ print("✅ 전역 settings.json에 session-agent-cleanup.py 훅 등록 완료 (U
 CLEANUP_PYEOF
   fi
 fi
+fi   # 플러그인 모드 분기 종료
 
 # ── 거버넌스 pre-commit hook 설치 (RealWorld Harness Document Sync 게이트) ──
 # scripts/hooks/pre-commit.sh 를 .git/hooks/pre-commit 으로 심볼릭 링크 또는 append.

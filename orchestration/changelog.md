@@ -34,6 +34,7 @@
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | docs | Phase 4 [4.12] migration §5 상세화 — ~/.claude 실측 인벤토리 기반 매핑표·historic·보존·명령어·정리 후 모습 | — |
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | infra | Phase 4 [4.13] migrate-step1.sh + migrate-step2.sh 자동화 스크립트 — 사용자 확인·안전 검사·롤백 안내 내장 | — |
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | infra | Phase 4 [4.14] marketplace.json/plugin.json 스키마 정정 — Claude Code parser 기준 (top-level name + owner object + repository string) | — |
+| `HARNESS-CHG-20260427-06` | 2026-04-27 | infra | v0.2.0 [6.1] setup-rwh.sh 플러그인 모드 분기 — CLAUDE_PLUGIN_ROOT set 시 글로벌 settings.json 훅 등록 skip (Phase 4 잔존 부채 #1 해결) | — |
 
 ---
 

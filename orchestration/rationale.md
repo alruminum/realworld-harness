@@ -289,4 +289,40 @@ Phase 0~3 완료 (총 27 sub-commits, `HARNESS-CHG-20260427-01` ~ `04`). 코어 
 
 ---
 
+---
+
+## `HARNESS-CHG-20260427-06` — 2026-04-27
+
+### Rationale
+
+v0.1.0-alpha release (Phase 4 종료) + 마이그레이션 완료 후, 사용자가 *기존 알려진 부채* (CHANGELOG.md 의 알려진 부채 섹션) 정리 시작. 가장 critical 한 부채:
+
+**`setup-rwh.sh` 의 플러그인 모드 미분기**: 플러그인 install 사용자가 신규 프로젝트에 `bash setup-rwh.sh` 실행하면 *글로벌 ~/.claude/settings.json* 의 hooks 섹션을 *자동 추가* — 플러그인의 `hooks/hooks.json` 와 *중복 등록* 위험. 다행히 "이미 등록됨 — 스킵" 로직이 있어 *중복 실행* 자체는 안 일어나나, 미install 환경 → install 환경 전환 시 잔존 hooks 가 cleanup 안 됨.
+
+근본 원인: setup-rwh.sh 설계 당시 *개발 폴백 모드* (~/.claude 직접 사용) 만 가정. 플러그인 모드는 cache 디렉토리에서 자동 로드되니 글로벌 settings.json 손댈 필요 없음.
+
+### Alternatives
+
+| # | 옵션 | 평가 |
+|---|---|---|
+| 1 | hooks 등록 영역 완전 제거 (어떤 모드든 안 함) | 거부 — 개발 폴백 사용자(플러그인 install 안 한 환경) 호환성 깨짐 |
+| 2 | 분기 추가: `[ -z "$CLAUDE_PLUGIN_ROOT" ]` 일 때만 hooks 등록 | **선택** — 플러그인 모드는 skip + 안내 메시지, 폴백 모드는 기존 동작 유지 |
+| 3 | 별도 옵션 플래그 (`--no-global-hooks`) | 거부 — 사용자가 굳이 인자 줘야 — 자동 감지가 자연스러움 |
+
+### Decision
+
+옵션 2 채택. line 234 (영역 시작) ~ line 343 (CLEANUP_PYEOF block 종료 후 fi) 를 `if [ -n "$CLAUDE_PLUGIN_ROOT" ]; then echo "skip"; else ...; fi` 으로 감쌈.
+
+### Follow-Up
+
+- 본 sub-commit `[6.1]`
+- 후속 v0.2.0 부채 (CHANGELOG.md 알려진 부채 섹션):
+  * `[6.2]` BATS → pytest 잔여 마이그레이션 (차단 X, 정리 가치 있음)
+  * `[6.3]` Node 20 deprecation env 제거 (액션 자체 Node 24 호환되면)
+  * `[6.4]` 5루프 §2~5 E2E 실측 (현재 §1 quickstart + 코드 검증만 통과)
+  * `[6.5]` plugin update 배포 (`/plugin update realworld-harness`로 사용자에 반영)
+- Phase 4 종료 commit `4013d09` 이후 첫 새 Task-ID
+
+---
+
 > 새 항목은 위 형식으로 추가. Task-ID 헤더는 H2(`##`), 4섹션은 H3(`###`).
