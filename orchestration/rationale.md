@@ -125,4 +125,41 @@ HARNESS-CHG-20260427-02 [1.3] harness/ 마이그레이션 (Python 11개 + Shell 
 
 ---
 
+---
+
+## `HARNESS-CHG-20260427-03` — 2026-04-27
+
+### Rationale
+
+Phase 1(코어 마이그레이션) 종료(`HARNESS-CHG-20260427-02`) 후 Phase 2(철학 명시화 + 자동 게이트) 진입. 핵심 의도 3가지:
+
+1. **암묵적 철학을 코드 옆 문서로 끌어내기** — "에이전트는 진화해도 워크플로우는 불변"이라는 유저 명시 철학(`memory/project_realworld_harness.md`)을 `harness-spec.md §0` Core Invariant로 명문화. 향후 PR/제안에서 "이 변경이 워크플로우를 약화시키는가" 판정 기준이 생김.
+2. **모델 진화 흡수 매커니즘** — `agent_tiers` 옵션으로 모델 가격 변동·세대 교체 시 워크플로우 코드를 *건드리지 않고* 매핑만 갱신 가능. "에이전트 진화 ↔ 워크플로우 불변"을 코드로 강제하는 가장 깔끔한 표현.
+3. **거버넌스 자동 강제** — Phase 0에서 명시한 룰(Task-ID + WHAT/WHY + Document-Exception 스코핑)을 git pre-commit hook + Claude Code commit-gate.py + GitHub PR 템플릿 3중으로 자동 강제. 휴먼 enforce에서 자동 enforce로 승격.
+
+부수 정리: hardcarry/softcarry bypass 로직 — 유저 명시(2026-04-27) "동찬은 제외하고 마이그레이션해 내가 과제할라고 잠깐 넣은 스킬이야" → 옵션 A(완전 제거) 채택.
+
+### Alternatives
+
+| 항목 | 검토 옵션 | 선택 | 근거 |
+|---|---|---|---|
+| Core Invariant 위치 | (a) 별도 manifesto 파일 / (b) `harness-spec.md §0` / (c) README 첫 문단 | **(b) §0** | spec이 헌법 위치 — 게이트·불변식 모두 §0의 구체화 표현 |
+| agent_tiers 매핑 형식 | (a) 에이전트별 직접 매핑 / (b) tier 추상화 high/mid/low / (c) 모델 직접 지정만 | **(b)** | 모델명은 자주 바뀌나 에이전트 역할은 안정. tier 레이어가 둘을 분리 |
+| bypass 로직 처리 | (a) 완전 제거 / (b) 일반화 `HARNESS_BYPASS=1` / (c) 그대로 | **(a) 완전 제거** | 유저 결정 — 개인 과제용 임시 스킬, 배포판에 무관 |
+| 자동 게이트 구현 언어 | (a) Node.js (TDM 원본) / (b) Python (RWHarness 통일) | **(b) Python** | 기존 인프라 통일. Node 의존성 폭 회피 |
+| Phase 2 범위 | (a) 분할 (Phase 2A/B) / (b) 한 Task-ID 산하 sub-commits | **(b)** | Phase 1 패턴 재사용. 9 sub-commit으로 단위 명확화 |
+
+### Decision
+
+위 (b)/(b)/(a)/(b)/(b) 채택. Phase 2 = `HARNESS-CHG-20260427-03` 산하 sub-commit 9개 (2.1~2.9).
+
+### Follow-Up
+
+- 9 sub-commit 진행 후 Phase 3 진입 (clean install smoke test → v1.0.0 → 마켓플레이스 PR)
+- `agent_tiers` 의 환경별 분기(개발/배포)는 v1.1 이후 (현재는 단일 매핑)
+- `check_doc_sync.py` 의 GitHub Actions 통합은 Phase 3 또는 v1.1
+- Core Invariant 자체의 변경은 PR title에 `[invariant-shift]` 토큰 + 별도 거버넌스 (rationale.md 4섹션 강제)
+
+---
+
 > 새 항목은 위 형식으로 추가. Task-ID 헤더는 H2(`##`), 4섹션은 H3(`###`).

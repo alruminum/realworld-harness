@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 | `HARNESS-CHG-20260427-01` | 2026-04-27 | spec | RealWorld Harness 플러그인 배포 레포 부트스트랩 | — |
 | `HARNESS-CHG-20260427-02` | 2026-04-27 | spec | Phase 1 마이그레이션 계획 + ~/.claude 활성 코드 인벤토리 | — |
+| `HARNESS-CHG-20260427-03` | 2026-04-27 | spec | Phase 2 — Core Invariant + agent_tiers + 거버넌스 자동 게이트 + bypass 제거 | — |
 
 ---
 
@@ -75,6 +76,30 @@
 - `docs/proposals.md §4` Phase 1
 - `docs/plan-plugin-distribution.md §5` (경로 추상화 + hooks.json 변환)
 - `docs/analysis-current-harness.md` (인벤토리 인풋)
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260427-03` — 2026-04-27 — Phase 2 (철학 명시화 + 자동 게이트 + 정리)
+
+**Type**: spec
+
+**Sub-commits 예정**:
+- `[2.1]` Core Invariant `harness-spec.md §0` 신규 (proposals.md 제안 B)
+- `[2.2]` README 메인 카피 — "Production-grade Agent Workflow Engine" (제안 A)
+- `[2.3]` hardcarry/softcarry bypass 로직 완전 제거 (Phase 1 잔존 TODO, 옵션 A)
+- `[2.4]` `agent_tiers` 도입 (proposals.md 제안 C, harness.config.json 스키마)
+- `[2.5]` `scripts/check_doc_sync.py` Python 자동 게이트 (proposals.md §6 통합)
+- `[2.6]` `scripts/hooks/pre-commit.sh` + `hooks/commit-gate.py` 확장
+- `[2.7]` `.github/PULL_REQUEST_TEMPLATE.md` (Document Sync 체크리스트)
+- `[2.8]` `scripts/setup-project.sh` PLUGIN_ROOT 적응
+- `[2.9]` Phase 2 종료 + 검증
+
+**Linked**:
+- `docs/proposals.md §3` 제안 A/B/C
+- `docs/proposals.md §6` 거버넌스 통합 방안
+- 유저 결정 (2026-04-27): A·B·D 추천대로, C는 옵션 A(완전 제거)
 
 **Exception**: —
 

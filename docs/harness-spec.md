@@ -5,9 +5,33 @@
 >
 > **본 문서는 `~/.claude/docs/harness-spec.md` 에서 마이그레이션됐다** (RealWorld Harness가 `~/.claude/` 하네스의 플러그인 배포판이므로). 본문은 source 그대로 보존하고, RWHarness 컨텍스트(플러그인 배포)에 맞춰 점진적으로 갱신될 예정이다. **Phase 2에 §0 Core Invariant 신규 추가 예정** (architect 위임).
 
-마이그레이션: 2026-04-27
+마이그레이션: 2026-04-27 (Phase 1 — `HARNESS-CHG-20260427-02`)
+갱신: 2026-04-27 (Phase 2 — `HARNESS-CHG-20260427-03`) — §0 Core Invariant 신규 추가
 원본 source: `~/.claude/docs/harness-spec.md` @ main `2c231c3`
-다음 갱신: Phase 2 — §0 Core Invariant 신규 추가, "에이전트 진화 vs 워크플로우 불변" 명시화
+
+---
+
+## 0. Core Invariant — 워크플로우 불변
+
+본 시스템은 **LLM 에이전트의 능력이 시간에 따라 향상된다**고 가정한다.
+**워크플로우는 그렇지 않다.** Process layer는 시스템의 영속적 자산이다.
+
+따라서:
+
+1. **워크플로우 변경에는 명시적 거버넌스가 필요하다** — `orch-rules-first` 훅 + Task-ID(`HARNESS-CHG-YYYYMMDD-NN`) + WHAT/WHY 분리 로그 (`orchestration/changelog.md` + `rationale.md`).
+2. **에이전트 능력 향상은 *고정된 게이트 안에서만* 작동한다** — 모델이 Opus 4.7 → 5.0 → 6.0 으로 진화하더라도, `architect → engineer → validator → pr-reviewer` 핸드오프 경로는 변하지 않는다. `agent_tiers` (harness.config.json)는 이 분리를 코드로 강제한다.
+3. **프로덕션 코드 경로에서는 결정론(determinism) > 적응성(adaptability)** — 자율 에이전트가 *알아서* 복구하는 패턴 대신, 명시적 ESCALATE → 유저 게이트 → 재계약(SPEC_GAP) 흐름을 강제. 재현성과 추적성이 적응성보다 우선.
+4. **자율 에이전트보다 결정론적 분업이 우위인 도메인** — 신뢰성, 재현성, B2B 적합성, 6개월+ 단위 유지보수성. 본 시스템은 데모/연구가 아닌 *프로덕션* 분파에 정렬돼있다.
+
+### 적용 범위
+
+본 §0은 RealWorld Harness의 **철학적 헌법**이다. §1~6의 모든 게이트·불변식·비목표는 본 §0의 구체화 표현이다.
+
+- 본 §0을 약화시키는 변경(예: 게이트 우회, 에이전트 자율성 확대, 결정론 완화)은 PR title에 `[invariant-shift]` 토큰을 명시한다.
+- 해당 PR은 `orchestration/rationale.md` 의 4섹션(Rationale / Alternatives / Decision / Follow-Up) 중 **Alternatives**에 *왜 이 워크플로우 불변식이 깨져야 하는가*를 명시 필수.
+- 자동 게이트(`scripts/check_doc_sync.py`, Phase 2.5+)는 `[invariant-shift]` PR 제목에 `Document-Exception:` 라인이 동반되지 않으면 머지 차단.
+
+> *현실 세계의 프로덕트 조직(기획·UX·아키·엔지·QA·리뷰)이 그러하듯, 개별 구성원이 똑똑해진다고 회사의 의사결정 절차가 사라지지는 않는다. RealWorld Harness의 가치는 그 절차에 있다.*
 
 ---
 
