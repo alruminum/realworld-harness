@@ -4,7 +4,7 @@
 >
 > 현실 세계 프로덕트 조직(기획 · UX · 아키 · 엔지 · QA · 리뷰)을 역할별 에이전트로 시뮬레이션하는 **결정론적 5단계 워크플로우** + **Task-ID 기반 거버넌스**.
 
-![status](https://img.shields.io/badge/status-alpha-yellow) ![license](https://img.shields.io/badge/license-MIT-green) ![phase](https://img.shields.io/badge/phase-3%20in--progress-blue)
+![status](https://img.shields.io/badge/status-alpha-yellow) ![license](https://img.shields.io/badge/license-MIT-green) ![phase](https://img.shields.io/badge/phase-4%20release-green)
 
 ---
 
@@ -50,14 +50,14 @@ LLM 기반 에이전트가 똑똑해질수록, 단일 거대 에이전트에게 
 | 0 | 클린업 + 거버넌스 골격 | ✅ 완료 (`HARNESS-CHG-20260427-01`) |
 | 1 | 코어 마이그레이션 (~/.claude → 플러그인 구조 + PLUGIN_ROOT 추상화) | ✅ 완료 (`HARNESS-CHG-20260427-02`) |
 | 2 | 철학 명시화 (§0 Core Invariant) + agent_tiers + 자동 거버넌스 게이트 | ✅ 완료 (`HARNESS-CHG-20260427-03`) |
-| 3 | 독립 정본화 + smoke-test (50/50) + GitHub Actions + E2E 가이드 | 🔄 진행 중 (`HARNESS-CHG-20260427-04` [3.1~3.12] 완료, [3.13+] 진행) |
-| 4 | v1.0.0 태그 + public 전환 + 정식 릴리즈 | ⬜ 대기 |
+| 3 | 독립 정본화 + smoke-test (50/50) + GitHub Actions + E2E 가이드 | ✅ 완료 (`HARNESS-CHG-20260427-04`) |
+| 4 | `v0.1.0-alpha` tag + public 전환 + GitHub Release | 🔄 진행 중 (`HARNESS-CHG-20260427-05`) |
 
 자세한 로드맵: [`docs/proposals.md §4`](docs/proposals.md)
 
 ## 설치
 
-> 🚧 현재 alpha — repo 가 private 상태. public 전환 + v1.0.0 tag 후 마켓플레이스 install 가용 예정 (Phase 4).
+> 🚧 alpha — `v0.1.0-alpha` 첫 release. public repo + 마켓플레이스 install 가용 (Phase 4 — `HARNESS-CHG-20260427-05`).
 
 ### A. 마켓플레이스 install (public 전환 후)
 

@@ -20,6 +20,7 @@
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | infra | Phase 3 [3.11] setup-project.sh `.gitignore` 자동 등록에 `.claude/harness-state/` 추가 — quickstart §1 실측 시 디버그 로그 untracked 발견 | — |
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | infra | Phase 3 [3.12] worktree 격리 기본값 활성화 — config.py 기본값/폴백 + setup-project.sh 누락 시 자동 추가 | — |
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | docs | Phase 3 [3.13] README + CHANGELOG 점검 패치 — Phase 표 갱신 + install 섹션 명확화 + alpha 시작일 명시 | — |
+| `HARNESS-CHG-20260427-05` | 2026-04-27 | spec | Phase 4 [4.1] release prep — README/CHANGELOG v0.1.0-alpha release-ready 갱신 | — |
 
 ---
 
@@ -168,6 +169,24 @@
 **Linked**:
 - 유저 명시 (2026-04-27): "~/.claude/docs/harness-spec.md 에서 마이그레이션됐다 이런 ~/.claude 관련 내용들은 싹다 빼주고", "내 이름을 명시하는 내용도 검사해서 뺴줘", "분파가 뭐야? 이런거 현실세계의 언어로 좀 바꿔줘"
 - `HARNESS-CHG-20260427-02` Phase 1 (마이그레이션 본격) 산출물 정리
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260427-05` — 2026-04-27 — Phase 4 (alpha release)
+
+**Type**: spec
+
+**Sub-commits 예정**:
+- `[4.1]` (본 commit) release prep — README/CHANGELOG release-ready 갱신
+- `[4.2]` `git tag -a v0.1.0-alpha` + `git push --tags` + `gh release create v0.1.0-alpha` (메타 행위, 별도 commit 불필요)
+- `[4.3]` `gh repo edit alruminum/realworld-harness --visibility public` (메타 행위)
+- `[4.4]` 정리 commit — 실제 release URL 반영 + Phase 4 ✅ 완료 표기
+
+**Linked**:
+- `docs/proposals.md §4` Phase 4
+- 유저 명시 승인 (2026-04-27): "응 진행"
 
 **Exception**: —
 

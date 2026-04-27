@@ -21,8 +21,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
-## [0.1.0-alpha] — 2026-04-27 (개발 중, git tag 미생성)
+## [0.1.0-alpha] — 2026-04-27
 
-플러그인 배포판 첫 알파. `~/.claude/` 시스템을 클린 구조로 마이그레이션 + 거버넌스 자동 게이트 활성화.
+**RealWorld Harness 첫 알파 release.** Claude Code 플러그인 마켓플레이스 배포 가능.
 
-> 알파 작업 시작일 2026-04-27. 정식 v0.1.0-alpha tag + GitHub Release 는 Phase 4(public 전환) 시점에 생성 예정.
+### 핵심 기능
+
+- **34 Python 훅** — 에이전트 권한 경계, 결정론적 게이트, 상태 관리
+- **14 역할별 에이전트** — product-planner, plan-reviewer, ux-architect, architect, engineer, test-engineer, validator, designer, design-critic, pr-reviewer, qa, security-reviewer
+- **5단계 워크플로우** — 기획-UX → 설계 → 구현(attempt 0..3 + SPEC_GAP 동결) → 디자인 → 리뷰-커밋
+- **Core Invariant** — `harness-spec.md §0` 워크플로우 불변 명문화 + `[invariant-shift]` PR 토큰
+- **agent_tiers** — high/mid/low tier 매핑으로 모델 진화 흡수 (워크플로우 코드 무수정)
+- **Task-ID 거버넌스** — WHAT(`changelog.md`) / WHY(`rationale.md`) 분리 로그 + Document-Exception 스코핑
+- **3중 자동 게이트** — git pre-commit hook + Claude Code commit-gate + GitHub Actions PR
+- **PLUGIN_ROOT 추상화** — `${CLAUDE_PLUGIN_ROOT}` 환경변수 폴백 `~/.claude`
+
+### 마이그레이션 결과 (Phase 1)
+- ~/.claude 활성 코드 100% 이전: hooks 23 / harness 11 / agents 26 / commands 16 / orchestration 15 / templates 1 / scripts 3 / hooks.json 25 엔트리
+
+### 검증 (Phase 3)
+- smoke-test 50/50 PASS (ubuntu-latest 별도 머신 자동)
+- E2E quickstart §1 (`/quick` 루프) 1 attempt 3m 18s 통과 (실측)
+- GitHub Actions doc-sync workflow 가동 (PR 단계 자동 게이트)
+
+### 알려진 부채 (v0.2.0 이후 정리 대상)
+- `setup-project.sh` 의 글로벌 settings.json hooks 등록 영역에 플러그인 모드 분기 미적용 (잠재 중복 등록 가능성, 다만 "이미 등록됨" 스킵 로직으로 안전)
+- BATS → pytest 잔여 마이그레이션 (차단 요소 X)
+- Node.js 20 deprecation (액션 자체 Node 24 호환되면 env 제거)
+
+### Phase
+- Phase 0 ✅ 부트스트랩
+- Phase 1 ✅ 코어 마이그레이션
+- Phase 2 ✅ 철학 명시화 + 자동 게이트
+- Phase 3 ✅ 독립 정본화 + 검증
+- Phase 4 (현재) — alpha release
