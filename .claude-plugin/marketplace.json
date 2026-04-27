@@ -1,0 +1,10 @@
+{
+  "owner": "alruminum",
+  "plugins": [
+    {
+      "name": "realworld-harness",
+      "source": ".",
+      "description": "Production-grade Agent Workflow Engine — role-specialized agents with deterministic 5-phase workflow (planner → architect → engineer → validator → reviewer)."
+    }
+  ]
+}

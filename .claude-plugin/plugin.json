@@ -1,0 +1,23 @@
+{
+  "name": "realworld-harness",
+  "version": "0.1.0-alpha",
+  "description": "Production-grade Agent Workflow Engine for Claude Code — 5-phase deterministic orchestration of role-specialized agents (PM, UX, architect, engineer, QA, reviewer).",
+  "author": {
+    "name": "dongchan kim",
+    "email": "alruminum@gmail.com"
+  },
+  "license": "MIT",
+  "keywords": [
+    "agent",
+    "workflow",
+    "orchestration",
+    "claude-code",
+    "harness",
+    "multi-agent"
+  ],
+  "homepage": "https://github.com/alruminum/realworld-harness",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alruminum/realworld-harness"
+  }
+}
