@@ -1,8 +1,18 @@
-# 현재 ~/.claude 하네스 시스템 분석 (배포 인풋)
+# 마이그레이션 시점 시스템 분석 (Historical Reference)
 
-> 분석 시점: 2026-04-27
-> 기준: ~/.claude main @ 2c231c3 (harness-spec/architecture 최종 검증 시점)
-> 목적: RealWorld Harness 플러그인 배포판 정제를 위한 현황 도면.
+> ⚠️ **본 문서는 historical reference 다.** RealWorld Harness 플러그인을 처음 만들 때 (2026-04-27) source 환경의 시스템을 분석한 *스냅샷*이며, 이후 마이그레이션 결과는 모두 RWHarness 의 다른 정본 문서에 반영됐다.
+>
+> **현재 RWHarness 정본은**:
+> - `docs/harness-spec.md` — 헌법 (목적·불변식·게이트·비목표)
+> - `docs/harness-architecture.md` — 기술 구현 (훅·핸드오프·세션·경계)
+> - `docs/agent-tiers.md` — agent_tiers 매핑 정책
+> - `orchestration/policies.md` — 거버넌스 룰 (Task-ID + Change-Type + Document-Exception)
+>
+> **본 문서를 안 읽어도 RWHarness 사용에 무관하다.** 마이그레이션 결정 추적·incident archaeology 가 필요할 때만 참조.
+
+분석 시점: 2026-04-27
+입력 source: source 환경의 운영 룰 (RWHarness `orchestration/upstream/` 참조 스냅샷에 보존)
+출력: RealWorld Harness 플러그인 배포판 (본 문서의 §G 체크리스트는 모두 처리됨 — 아래 참조)
 
 ---
 
@@ -167,27 +177,27 @@
 
 ---
 
-## G. 배포 전 정리 체크리스트
+## G. 배포 전 정리 체크리스트 — 결과 (2026-04-27 모두 처리됨)
 
-### 필수
-- [ ] `.bak` 11개 삭제 (`harness/*.sh.bak`)
-- [ ] 개인용 제거: 개인 스타일 가이드 디렉토리, `commands/{hardcarry,softcarry}.md`, 임시 과제용 프로젝트 메모리
-- [ ] 하드코딩 경로(`Path.home()`) → `${CLAUDE_PLUGIN_ROOT}` 추상화 (~58곳, 활성 코드 ~15곳)
-- [ ] LICENSE 추가 (MIT)
-- [ ] CHANGELOG v1.0.0 초기화
-- [ ] README 영문+한글 (현재 드리프트 심함)
+### 필수 — 모두 ✓
+- [x] `.bak` 11개 삭제 — Phase 1.3 에서 `*.py` 만 복사로 자동 제외
+- [x] 개인용 제거 — Phase 1.4/1.5 에서 hardcarry/softcarry/개인 스타일 가이드 모두 배제 + Phase 3 [3.1] 에서 본문 잔존 텍스트 일반화
+- [x] 하드코딩 경로 → `${CLAUDE_PLUGIN_ROOT}` 추상화 — Phase 1.7 에서 5 파일 9곳 일괄 변환 (commit `e8c4cee`)
+- [x] LICENSE (MIT) 추가 — Phase 0
+- [x] CHANGELOG v0.1.0-alpha 초기화 — Phase 0 + Phase 4 [4.1]
+- [x] README 영문+한글 — Phase 0 + Phase 2 [2.2] 카피 강화
 
-### 검증 필요
-- [ ] 플래그 set/clear 지점 완전 매핑 (impl_loop.py 추적)
-- [ ] security-reviewer 통합 경로 결정 (배제 / 통합 / 옵트인)
-- [ ] 핸드오프 파일 방식의 토큰 효율 실측 (이론만 있음)
-- [ ] BATS → pytest 잔여 migration (현재 parity 34/34)
+### 검증 — 부분 처리
+- [x] 핸드오프 파일 방식 — `harness-spec.md §2.2` 에 명시 (실측은 quickstart 통과로 간접 확인)
+- [⚠️] 플래그 set/clear 완전 매핑 — `impl_loop.py` 85KB 산재로 부분만, v0.2.0 정리 대상
+- [⚠️] security-reviewer 통합 경로 — 옵트인 결정 (`docs/proposals.md §5`), 실 통합은 v0.2.0+
+- [⚠️] BATS → pytest 잔여 migration — 차단 요소 X, v0.2.0 정리 대상
 
 ---
 
-## H. 추가 조사 필요
+## H. 추가 조사 — 진행 상태 (2026-04-27 시점)
 
-1. **플래그 상태 머신** — impl_loop.py 85KB 내 set/clear 지점 다이어그램화
-2. **fail_type 분류체계** — 동일 fail_type 2회 판정 로직 정확한 위치
-3. **security-reviewer 통합 계획** — 통합 vs 옵트인 vs 배제
-4. **핸드오프 토큰 효율 실측** — Stream idle timeout 11분 회피 검증 (session log 기반)
+1. **플래그 상태 머신** — `impl_loop.py` 85KB set/clear 다이어그램화: ⬜ v0.2.0 정리 대상
+2. **fail_type 분류체계** — 동일 fail_type 2회 판정 로직: ⬜ v0.2.0 정리 대상 (현재는 quickstart 실측으로 1 attempt 통과 확인)
+3. **security-reviewer 통합 계획** — 옵트인 결정 (`docs/proposals.md §5`), 실 통합은 v0.2.0+
+4. **핸드오프 토큰 효율 실측** — quickstart §1 (`/quick` 1 attempt 3m 18s) 로 간접 검증, 본격 5루프 실측은 v0.2.0+

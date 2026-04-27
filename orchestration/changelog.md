@@ -21,6 +21,7 @@
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | infra | Phase 3 [3.12] worktree 격리 기본값 활성화 — config.py 기본값/폴백 + setup-project.sh 누락 시 자동 추가 | — |
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | docs | Phase 3 [3.13] README + CHANGELOG 점검 패치 — Phase 표 갱신 + install 섹션 명확화 + alpha 시작일 명시 | — |
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | spec | Phase 4 [4.1] release prep — README/CHANGELOG v0.1.0-alpha release-ready 갱신 | — |
+| `HARNESS-CHG-20260427-05` | 2026-04-27 | docs | Phase 4 [4.2] analysis-current-harness.md — historical reference 명시 + §G/§H 결과 갱신 | — |
 
 ---
 
