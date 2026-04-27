@@ -12,6 +12,7 @@
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | spec | Phase 3 [3.3] harness-architecture.md 본문 PLUGIN_ROOT 적응 + 잔존 ~/.claude 정리 | — |
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | infra | Phase 3 [3.4] GitHub Actions Document Sync workflow + Change-Type `.github/` 분류 추가 | — |
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | infra | Phase 3 [3.5] smoke-test.sh + clean install 검증 가이드 — 50/50 PASS | — |
+| `HARNESS-CHG-20260427-04` | 2026-04-27 | docs | Phase 3 [3.6] 5루프 E2E 검증 시나리오 가이드 | — |
 
 ---
 
