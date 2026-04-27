@@ -9,6 +9,35 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+# RealWorld Harness Core Invariant 표현 — 에이전트 능력 진화는 워크플로우 코드를
+# 건드리지 않고 본 매핑만 갱신하면 흡수된다. 모델 가격 변동·세대 교체에 대응.
+DEFAULT_AGENT_TIERS = {
+    "high": "claude-opus-4-7",
+    "mid": "claude-sonnet-4-6",
+    "low": "claude-haiku-4-5",
+}
+
+# 에이전트별 tier 배정 (역할 안정성에 따른 결정론적 매핑).
+# 사용자는 harness.config.json 의 "agent_tier_assignment" 로 override 가능.
+DEFAULT_AGENT_TIER_ASSIGNMENT = {
+    # 시스템·계획·설계 (정확도 최우선)
+    "architect": "high",
+    "plan-reviewer": "high",
+    # 구현·검증·디자인 (균형)
+    "engineer": "mid",
+    "test-engineer": "mid",
+    "validator": "mid",
+    "pr-reviewer": "mid",
+    "designer": "mid",
+    "ux-architect": "mid",
+    "product-planner": "mid",
+    "security-reviewer": "mid",
+    # 분류·심사 (저비용)
+    "qa": "low",
+    "design-critic": "low",
+}
+
+
 @dataclass
 class HarnessConfig:
     prefix: str = "proj"
@@ -20,6 +49,24 @@ class HarnessConfig:
     isolation: str = ""  # "" (없음) 또는 "worktree"
     second_reviewer: str = ""  # "gemini", "gpt", "" (비활성)
     second_reviewer_model: str = ""  # "gemini-2.5-flash", "gpt-4o-mini" 등
+    # tier → model ID 매핑 (Core Invariant 표현)
+    agent_tiers: dict = field(default_factory=lambda: dict(DEFAULT_AGENT_TIERS))
+    # agent name → tier 배정
+    agent_tier_assignment: dict = field(default_factory=lambda: dict(DEFAULT_AGENT_TIER_ASSIGNMENT))
+
+
+def get_agent_model(agent_name: str, config: HarnessConfig) -> str:
+    """에이전트명으로 모델 ID 조회.
+
+    조회 순서:
+    1. config.agent_tier_assignment[agent_name] → tier
+    2. config.agent_tiers[tier] → 모델 ID
+    3. 미정의 에이전트는 'mid' 폴백
+
+    Returns: 모델 ID 문자열 (예: "claude-opus-4-7")
+    """
+    tier = config.agent_tier_assignment.get(agent_name, "mid")
+    return config.agent_tiers.get(tier) or config.agent_tiers.get("mid") or DEFAULT_AGENT_TIERS["mid"]
 
 
 def load_config(project_root: Path | None = None) -> HarnessConfig:
@@ -44,6 +91,17 @@ def load_config(project_root: Path | None = None) -> HarnessConfig:
     except (json.JSONDecodeError, OSError):
         return HarnessConfig()
 
+    # agent_tiers / agent_tier_assignment: 사용자 매핑이 있으면 기본값 위에 머지 (덮어쓰기)
+    user_tiers = data.get("agent_tiers", {})
+    merged_tiers = dict(DEFAULT_AGENT_TIERS)
+    if isinstance(user_tiers, dict):
+        merged_tiers.update(user_tiers)
+
+    user_assignment = data.get("agent_tier_assignment", {})
+    merged_assignment = dict(DEFAULT_AGENT_TIER_ASSIGNMENT)
+    if isinstance(user_assignment, dict):
+        merged_assignment.update(user_assignment)
+
     return HarnessConfig(
         prefix=data.get("prefix", "proj"),
         test_command=data.get("test_command", ""),
@@ -54,6 +112,8 @@ def load_config(project_root: Path | None = None) -> HarnessConfig:
         isolation=data.get("isolation", ""),
         second_reviewer=data.get("second_reviewer", ""),
         second_reviewer_model=data.get("second_reviewer_model", ""),
+        agent_tiers=merged_tiers,
+        agent_tier_assignment=merged_assignment,
     )
 
 
