@@ -1,32 +1,34 @@
 #!/bin/bash
-# ~/.claude/setup-harness.sh
-# 신규 프로젝트 루트에서 실행: bash ~/.claude/setup-harness.sh
-# 프로젝트별 .claude/settings.json + harness.config.json을 초기화한다.
+# scripts/setup-project.sh — RealWorld Harness 프로젝트 초기화
 #
-# ⚠️ 훅은 프로젝트 settings.json에 쓰지 않는다.
-#    모든 훅은 ~/.claude/settings.json(전역)에서만 관리.
-#    프로젝트 settings.json에는 env + allowedTools만 작성.
+# 사용법:
+#   bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-project.sh"   # 플러그인 모드
+#   bash ~/.claude/scripts/setup-project.sh                 # 개발/폴백 모드
 #
-# 전역 훅 (모두 ~/.claude/hooks/*.py 참조):
-#   PreToolUse(Edit/Write) — plugin-write-guard.py + orch-rules-first.py + agent-boundary.py
-#   PreToolUse(Read)       — agent-boundary.py
-#   PreToolUse(Bash)       — harness-drift-check.py + commit-gate.py
-#   PreToolUse(Agent)      — agent-gate.py
-#   PreToolUse(Skill)      — skill-gate.py                            (Phase 4)
-#   PreToolUse(mcp__github__create_issue) — issue-gate.py
-#   PreToolUse(mcp__github__update_issue) — issue-gate.py
-#   PostToolUse(Edit)      — harness-settings-watcher.py
-#   PostToolUse(Bash)      — post-commit-cleanup.py + harness-review-trigger.py
-#   PostToolUse(Agent)     — post-agent-flags.py
-#   PostToolUse(Skill)     — post-skill-flags.py                       (Phase 4)
-#   Stop                   — afplay Glass.aiff + skill-stop-protect.py + ralph-session-stop.py + harness-review-stop.py
+# 산출물:
+#   .claude/harness.config.json       (prefix + worktree 격리 + agent_tiers)
+#   .claude/settings.json             (env + allowedTools 만)
+#   .claude/agent-config/             (프로젝트별 에이전트 지침 디렉토리)
+#   .git/hooks/pre-commit             (RealWorld Harness 거버넌스 doc-sync 게이트)
+#   CLAUDE.md                         (templates/CLAUDE-base.md 에서 복사)
 #
-# prefix 결정: 각 훅이 harness_common.get_prefix()로 harness.config.json → dirname → "proj" 폴백
+# 모드 분기:
+#   - $CLAUDE_PLUGIN_ROOT set → 플러그인 모드. hooks/hooks.json 이 자동 로드되므로
+#     ~/.claude/settings.json 의 hooks 섹션은 건드리지 않는다.
+#   - $CLAUDE_PLUGIN_ROOT 미설정 → 개발 폴백 모드. ~/.claude/ 그대로 사용.
 #
-# 주의: harness-*.sh (executor, impl, impl_simple, impl_std, impl_deep, design, plan, utils)는 글로벌(~/.claude/) 전용.
-#       프로젝트에 복사하지 않으며, 기존 낡은 복사본은 자동 삭제.
+# Phase 2 (HARNESS-CHG-20260427-03 [2.8]) PLUGIN_ROOT 추상화 적용.
+# 거버넌스 pre-commit 자동 설치 (scripts/hooks/pre-commit.sh).
 
 set -e
+
+# ── 하네스 루트 결정 ──
+HARNESS_ROOT="${CLAUDE_PLUGIN_ROOT:-${HOME}/.claude}"
+if [ -n "$CLAUDE_PLUGIN_ROOT" ]; then
+  echo "📦 플러그인 모드 — HARNESS_ROOT=$HARNESS_ROOT"
+else
+  echo "🛠  개발 폴백 모드 — HARNESS_ROOT=$HARNESS_ROOT"
+fi
 
 # 선택적 인수
 # --doc-name <name>  : 핵심 설계 문서 이름 (docs/<name>.md), SPEC_GAP 신선도 체크에 사용 (기본값: domain-logic)
@@ -169,8 +171,8 @@ echo "📁 .claude/agent-config/ 준비 완료 (프로젝트별 에이전트 지
 
 # ── CLAUDE.md 베이스 복사 (없을 때만) ─────────────────────────────────
 if [ ! -f "CLAUDE.md" ]; then
-  if [ -f "${HOME}/.claude/templates/CLAUDE-base.md" ]; then
-    cp "${HOME}/.claude/templates/CLAUDE-base.md" CLAUDE.md
+  if [ -f "${HARNESS_ROOT}/templates/CLAUDE-base.md" ]; then
+    cp "${HARNESS_ROOT}/templates/CLAUDE-base.md" CLAUDE.md
     if [ -n "$REPO" ]; then
       sed -i '' "s|\[채우기: owner/repo\]|${REPO}|g" CLAUDE.md 2>/dev/null || true
     fi
@@ -321,32 +323,32 @@ CLEANUP_PYEOF
   fi
 fi
 
-# ── rule-audit pre-commit hook 설치 ────────────────────────────────────
-# harness 관련 파일 변경 시 rule-audit.bats를 자동 실행
-# 이미 pre-commit hook이 있으면 append (덮어쓰기 금지)
+# ── 거버넌스 pre-commit hook 설치 (RealWorld Harness Document Sync 게이트) ──
+# scripts/hooks/pre-commit.sh 를 .git/hooks/pre-commit 으로 심볼릭 링크 또는 append.
+# orchestration/policies.md §2~6 룰 자동 강제 (Task-ID, Change-Type, Document-Exception).
 PRECOMMIT_HOOK=".git/hooks/pre-commit"
-RULE_AUDIT_MARKER="# rule-audit: harness consistency check"
-GLOBAL_HARNESS_DIR="${HOME}/.claude/harness"
+DOC_SYNC_MARKER="# realworld-harness: document sync gate"
+HARNESS_PRECOMMIT="${HARNESS_ROOT}/scripts/hooks/pre-commit.sh"
 
 if [ -d ".git/hooks" ]; then
-  if ! grep -qF "$RULE_AUDIT_MARKER" "$PRECOMMIT_HOOK" 2>/dev/null; then
-    cat >> "$PRECOMMIT_HOOK" <<HOOKEOF
+  if ! grep -qF "$DOC_SYNC_MARKER" "$PRECOMMIT_HOOK" 2>/dev/null; then
+    if [ -x "$HARNESS_PRECOMMIT" ]; then
+      cat >> "$PRECOMMIT_HOOK" <<HOOKEOF
 
-${RULE_AUDIT_MARKER}
-_harness_changed=\$(git diff --cached --name-only 2>/dev/null | grep -E "(impl_simple\.sh|impl_std\.sh|impl_deep\.sh|impl_helpers\.sh|impl\.sh|utils\.sh|orchestration-rules\.md|RULE_INDEX\.md)" || true)
-if [ -n "\$_harness_changed" ]; then
-  echo "[pre-commit] harness 파일 변경 감지 — rule-audit.bats 실행 중..."
-  if command -v bats &>/dev/null && [ -f "${GLOBAL_HARNESS_DIR}/tests/rule-audit.bats" ]; then
-    bats "${GLOBAL_HARNESS_DIR}/tests/rule-audit.bats" || { echo "[pre-commit] rule-audit.bats 실패 — commit 중단"; exit 1; }
-  else
-    echo "[pre-commit] bats 미설치 또는 rule-audit.bats 없음 — 검사 스킵"
-  fi
+${DOC_SYNC_MARKER}
+# scripts/check_doc_sync.py 호출. 실패 시 commit 차단.
+# 우회: SKIP_DOC_SYNC=1 또는 commit msg 에 'Document-Exception: <사유>' 명시.
+if [ -x "${HARNESS_PRECOMMIT}" ]; then
+  bash "${HARNESS_PRECOMMIT}" || exit 1
 fi
 HOOKEOF
-    chmod +x "$PRECOMMIT_HOOK"
-    echo "✅ pre-commit hook에 rule-audit 추가 완료: $PRECOMMIT_HOOK"
+      chmod +x "$PRECOMMIT_HOOK"
+      echo "✅ pre-commit hook에 RealWorld Harness Document Sync 게이트 추가"
+    else
+      echo "ℹ️  $HARNESS_PRECOMMIT 없음 — pre-commit hook 스킵 (플러그인 미설치 또는 파일 부재)"
+    fi
   else
-    echo "ℹ️  pre-commit hook에 rule-audit 이미 등록됨 — 스킵"
+    echo "ℹ️  pre-commit hook에 Document Sync 게이트 이미 등록됨 — 스킵"
   fi
 else
   echo "ℹ️  .git/hooks 디렉토리 없음 — pre-commit hook 스킵 (git init 후 재실행)"
