@@ -83,21 +83,114 @@ echo $CLAUDE_PLUGIN_ROOT
 
 ## 5. ~/.claude 의 source 디렉토리 삭제 (터미널 작업)
 
-이 시점에 ~/.claude/hooks 등 source 디렉토리는 *어디서도 참조 안 됨* (settings.json hooks 제거 + 플러그인이 PLUGIN_ROOT 로 작동). 안전 삭제.
+이 시점에 ~/.claude 의 source 는 *어디서도 참조 안 됨* (settings.json hooks 제거 + 플러그인이 PLUGIN_ROOT 로 작동). 안전 삭제.
+
+### 5.1 매핑표 — 삭제 대상이 RWHarness 의 어디로 대체되나
+
+| ~/.claude (삭제) | RWHarness 대체 (`${CLAUDE_PLUGIN_ROOT}/...`) | 비고 |
+|---|---|---|
+| `hooks/` (전체) | `hooks/` | Python 훅 23개 + `hooks.json` 자동 로드 |
+| `harness/` (전체) | `harness/` | Python 코어 11개 |
+| `agents/` (전체, archive 포함) | `agents/` | 14 .md + architect/ + validator/ |
+| `orchestration/` (전체) | `orchestration/policies.md` (정본) + `orchestration/upstream/` (source 스냅샷 보존) | RWHarness 가 source 운영 룰을 upstream/ 에 *원본 그대로* 보존했으므로 ~/.claude 측은 삭제 OK |
+| `templates/` (전체, CLAUDE-base.md) | `templates/CLAUDE-base.md` | 동일 |
+| `scripts/harness-review.py` | `scripts/harness-review.py` | 동일 |
+| `scripts/classify-miss-report.py` | `scripts/classify-miss-report.py` | 동일 |
+| `setup-harness.sh` | `scripts/setup-rwh.sh` | 이름 변경 (Phase 4 [4.6]) |
+| `setup-agents.sh` | (deprecated, 대체 없음) | 단순 삭제 |
+| `orchestration-rules.md` | `orchestration/policies.md` | 통합 |
+| `commands/init-project.md` | `commands/init-rwh.md` | 이름 변경 |
+| `commands/quick.md`, `qa.md`, `ux.md` 등 14개 | `commands/` | RWHarness 정본 |
+| `docs/harness-spec.md`, `harness-architecture.md` 등 | `docs/` | RWHarness 정본 (이미 갱신됨) |
+
+### 5.2 historic 자료 (RWHarness 에 대체 없음, 단순 삭제)
+
+| 파일 | 성격 |
+|---|---|
+| `agent-score.md` | 에이전트 평가 historic 자료 |
+| `harness-improvement-plan.md` | 초기 개선 계획 (이미 RWHarness 로 결과 반영) |
+| `harness-watch.sh` | historic 워치 스크립트 |
+| `docs/harness-audit-report-2026-04-11.md` | historic 감사 보고서 |
+| `docs/harness-backlog.md` | source 백로그 (RWHarness 의 changelog/rationale 로 통합) |
+| `docs/comparison-omc-2026-04-15.md`, `docs/plan-*.md`, `docs/하네스 ...ini` | historic 분석/계획 |
+| `docs/archive/`, `docs/design-gate/`, `docs/session-isolation/`, `docs/tdd-gate/` | historic |
+| `README.md` (~/.claude 자체) | source repo README — RWHarness README 가 정본 |
+
+> historic 자료는 ~/.claude/.git 에 git 추적되고 있으므로 (`cd ~/.claude && git log` 로 확인 가능) 나중에 필요 시 git 으로 복구 가능. 안전.
+
+### 5.3 보존 (절대 삭제 X — 사용자 데이터)
+
+| 항목 | 역할 |
+|---|---|
+| `CLAUDE.md` | 사용자 글로벌 룰 |
+| `harness-memory.md` | 사용자 하네스 메모리 |
+| `harness-projects.json` | 화이트리스트 (등록된 프로젝트 목록) — 플러그인도 그대로 사용 |
+| `harness-state/` | 프로젝트별 세션 상태 (있다면) |
+| `harness-logs/` | 실행 로그 |
+| `memory/` | 사용자 메모리 |
+| `dongchan-style/` 또는 개인 스타일 가이드 | 사용자 개인 자료 |
+| `backups/` | 사용자 백업 |
+| `commands/hardcarry.md`, `commands/softcarry.md` | 개인 임시 스킬 (있다면) |
+| `settings.json` | hooks 섹션만 제거(§3에서 처리), 나머지 보존 |
+
+### 5.4 Claude Code 자체 사용 (절대 X)
+
+`projects/`, `sessions/`, `session-env/`, `history.jsonl`, `plugins/`, `cache/`, `downloads/`, `paste-cache/`, `file-history/`, `ide/`, `plans/`, `mcp-needs-auth-cache.json`, `stats-cache.json`, `.git/`, `.gitignore`, `.pytest_cache/`, `.claude/` (nested) — Claude Code 가 관리하는 영역. 손대면 작동 깨짐.
+
+### 5.5 명령어 (정확)
 
 ```bash
+# RWHarness 가 대체하는 디렉토리 — 통째로 삭제
 rm -rf ~/.claude/hooks
 rm -rf ~/.claude/harness
 rm -rf ~/.claude/agents
 rm -rf ~/.claude/orchestration
 rm -rf ~/.claude/templates
 
-rm -f ~/.claude/scripts/setup-harness.sh
+# scripts 안의 RWHarness 가 가져온 .py 만 삭제 (디렉토리 자체는 다른 사용자
+# 스크립트가 있을 수 있으니 비어있을 때만 rmdir)
 rm -f ~/.claude/scripts/harness-review.py
 rm -f ~/.claude/scripts/classify-miss-report.py
-rmdir ~/.claude/scripts 2>/dev/null   # 비어있으면 삭제
+rmdir ~/.claude/scripts 2>/dev/null
 
-rm -f ~/.claude/.harness-infra        # 인프라 프로젝트 마커
+# 루트의 source 파일들
+rm -f ~/.claude/setup-harness.sh
+rm -f ~/.claude/setup-agents.sh
+rm -f ~/.claude/orchestration-rules.md
+
+# historic 자료
+rm -f ~/.claude/agent-score.md
+rm -f ~/.claude/harness-improvement-plan.md
+rm -f ~/.claude/harness-watch.sh
+rm -f ~/.claude/README.md         # ~/.claude 자체 README — RWHarness README 가 정본
+
+# docs/ 의 historic 자료 — 디렉토리 통째로 삭제 (필요 시 git 복구)
+rm -rf ~/.claude/docs
+
+# commands/ — 16개 RWHarness 가져간 것 + 개인 보존 분리
+# 1) 개인 스킬 보존 (필요 시 백업 디렉토리로 옮김)
+mkdir -p ~/.claude/commands.personal
+mv ~/.claude/commands/hardcarry.md ~/.claude/commands.personal/ 2>/dev/null
+mv ~/.claude/commands/softcarry.md ~/.claude/commands.personal/ 2>/dev/null
+# 2) 나머지 16개 삭제
+rm -rf ~/.claude/commands
+
+# 인프라 마커 (있는 경우만)
+rm -f ~/.claude/.harness-infra
+```
+
+### 5.6 정리 후 ~/.claude 의 모습 (예상)
+
+```bash
+ls ~/.claude/
+# CLAUDE.md          harness-memory.md           memory/
+# backups/           harness-projects.json       plugins/        ← Claude Code 캐시
+# cache/             harness-state/              projects/       ← Claude Code 메모리
+# commands.personal/ ide/                        sessions/
+# dongchan-style/    mcp-needs-auth-cache.json   session-env/
+# downloads/         settings.json               stats-cache.json
+# file-history/                                  history.jsonl
+# paste-cache/       plans/                      .git/
 ```
 
 ### 절대 보존 (사용자 데이터)

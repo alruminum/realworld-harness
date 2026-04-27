@@ -31,6 +31,7 @@
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | docs | Phase 4 [4.9] README 외부 사용자 진입 정비 — 의존성·첫 사용·트러블슈팅·발견·공유 섹션 | — |
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | docs | Phase 4 [4.10] migration-from-source 가이드 — ~/.claude → RWHarness 플러그인 전환 step-by-step | — |
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | docs | Phase 4 [4.11] migration-from-source 가이드 정정 — Claude Code 완전 quit 단계 추가 (새 세션도 같은 환경 공유) | — |
+| `HARNESS-CHG-20260427-05` | 2026-04-27 | docs | Phase 4 [4.12] migration §5 상세화 — ~/.claude 실측 인벤토리 기반 매핑표·historic·보존·명령어·정리 후 모습 | — |
 
 ---
 
