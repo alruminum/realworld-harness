@@ -137,7 +137,27 @@ echo $CLAUDE_PLUGIN_ROOT
 
 `projects/`, `sessions/`, `session-env/`, `history.jsonl`, `plugins/`, `cache/`, `downloads/`, `paste-cache/`, `file-history/`, `ide/`, `plans/`, `mcp-needs-auth-cache.json`, `stats-cache.json`, `.git/`, `.gitignore`, `.pytest_cache/`, `.claude/` (nested) — Claude Code 가 관리하는 영역. 손대면 작동 깨짐.
 
-### 5.5 명령어 (정확)
+### 5.5 자동화 스크립트 (권장)
+
+수작업 대신 RWHarness 의 마이그레이션 스크립트 2개로 자동 진행. 사용자 확인(y/N) 단계 + 안전 검사(Claude Code 종료 / step1 백업 / 플러그인 install 확인) 내장.
+
+```bash
+# 사전: 본 RWHarness repo 가 clone 되어있어야 함
+cd /path/to/realworld-harness   # 또는 export RW=/path/to/realworld-harness
+
+# Step 1: Claude Code quit 후 — 백업 + settings 정리
+bash scripts/migrate-step1.sh
+
+# (이 시점에 Claude Code 재시작 → /plugin marketplace add + /plugin install
+#  → 다시 한 번 재시작 → 다시 quit)
+
+# Step 2: 플러그인 install 확인 후 — source 정리
+bash scripts/migrate-step2.sh
+```
+
+각 스크립트가 화면에 다음 단계 안내·롤백 명령어 출력. 막힐 때 그 안내 그대로 따르면 됨.
+
+### 5.5b 수작업 명령어 (참고용 — 스크립트 안 쓸 때)
 
 ```bash
 # RWHarness 가 대체하는 디렉토리 — 통째로 삭제
