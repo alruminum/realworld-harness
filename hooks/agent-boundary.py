@@ -12,11 +12,8 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# /hardcarry, /softcarry 과제 모드 우회 — HardcarryDryRun / softcarray 프로젝트에선 훅 bypass.
-# 과제 종료 후 'softcarray' 조건 삭제 (또는 ~/.claude/hooks/agent-boundary.py.bak-hardcarry 복원).
-if ('HardcarryDryRun' in os.getcwd()
-        or 'softcarray' in os.getcwd()
-        or os.path.exists(os.path.join(os.getcwd(), '.no-harness'))):
+# .no-harness 마커 파일이 프로젝트 루트에 있으면 훅 우회 (사용자 옵션).
+if os.path.exists(os.path.join(os.getcwd(), '.no-harness')):
     sys.exit(0)
 
 import json
