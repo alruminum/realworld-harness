@@ -11,6 +11,10 @@ on:
   pull_request:
     branches: [main]
 
+# Node.js 20 deprecation 우회 — smoke-test.yml 와 동일.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   doc-sync:
     name: check_doc_sync.py base..head
