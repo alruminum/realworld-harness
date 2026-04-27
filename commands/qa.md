@@ -1,0 +1,161 @@
+---
+name: qa
+description: 버그/이슈를 자연어로 설명하면 명확히 정의한 뒤 하네스 루프를 시작하는 스킬. 유저가 "버그 있다", "이슈 있어", "이슈가 있다", "이상해", "안 맞아", "안 돼", "여전히 안돼", "오류", "깨져", "@qa", "QA", "큐에이", "버그 하나 있는데" 등의 표현을 쓸 때 반드시 이 스킬을 사용한다.
+---
+
+# QA Skill
+
+유저의 이슈 신고를 구조화하고, QA 에이전트를 직접 호출해 분류한 뒤 적절한 루프로 라우팅한다.
+**executor.py bugfix는 사용하지 않는다. 오케스트레이션은 이 스킬이 담당한다.**
+
+## 0단계: 버그 vs 디자인 구분
+
+이슈 유형을 먼저 판단한다.
+
+**명확히 동작 버그**: 기능이 작동 안 함, 로직 오류, 타이머/카운터 이상, 버튼 중복 클릭 등
+→ 정보 수집 후 **QA 에이전트 호출** (아래 절차)
+
+**명확히 디자인 이슈**: "시안", "디자인", "UX", "화면 개선", "이터레이션", "모양 바꿔줘"
+→ **ux 스킬**로 바로 전달 (QA 에이전트 호출 없음)
+
+**애매한 경우** ("이상해", "안 맞아", "칸이 이상해", "위치가 다른데"):
+→ 아래 질문 1개만 한다:
+
+> "동작이 잘못된 건가요(기능 버그), 아니면 보이는 게 마음에 안 드는 건가요(디자인 이슈)?"
+
+유저 답변으로 경로를 결정한다.
+
+---
+
+## 버그 경로: 정보 수집
+
+| 항목 | 설명 | 예시 |
+|------|------|------|
+| **증상** (ACTUAL) | 지금 어떻게 동작하고 있는가 | "안눌러도 초가 무한으로 지나가" |
+| **기대** (EXPECTED) | 어떻게 동작해야 하는가 | "2초 제한으로 끝나야 함" |
+| **위치** (WHERE) | 어느 화면/기능/조건에서 발생하는가 | "게임 플레이 중 타이머" |
+
+**증상(ACTUAL)이 없으면** 반드시 물어본다. 기대/위치는 추론 가능하면 넘어간다.
+질문은 한 번에 최대 2개.
+
+### 확인 출력
+
+```
+---
+**QA 실행 설정**
+
+[증상] ...
+[기대] ...
+[위치] ...
+
+이대로 QA 분석을 시작할까요?
+---
+```
+
+---
+
+## QA 에이전트 호출 (Agent 도구)
+
+유저 확인 후 Agent 도구로 QA 에이전트를 직접 호출한다.
+
+**중요**: `issue` 필드에 유저 원문을 반드시 포함한다. QA가 요약/해석한 내용만 넣지 말고, 유저가 실제로 입력한 텍스트를 `[유저 원문]` 태그로 감싸서 전달한다. architect가 이 원문을 직접 읽고 유저 의도를 판단할 수 있어야 한다.
+
+```
+@MODE:QA:ANALYZE
+@PARAMS: {
+  "issue": "[증상] <실제동작> / [기대] <기대동작> / [위치] <위치>\n[유저 원문] <유저가 입력한 텍스트 그대로, 한 글자도 수정하지 않고>",
+  "existing_issue?": "<유저가 이슈 번호를 언급한 경우>"
+}
+```
+
+QA 에이전트가 코드 분석 + 분류를 수행한다. FUNCTIONAL_BUG일 때만 이슈 생성 (DESIGN_ISSUE는 designer가 담당).
+
+---
+
+## 분류 결과별 라우팅
+
+QA 에이전트 출력의 `---QA_SUMMARY---` 블록을 읽어 라우팅한다.
+
+### FUNCTIONAL_BUG → executor.sh impl
+
+QA 분석 결과에서 depth를 추천한다. 기준: **이 버그 수정이 기존 함수/모듈 안에서 끝나는가, 기존에 없던 처리 경로를 새로 만들어야 하는가?**
+- `simple`: 기존 코드 수정 — 조건 교정, 값 복원, 호출 순서 수정, 누락 처리 추가
+- `std`: 새 처리 경로 신설 — 기존에 없던 에러 핸들링·재시도 로직·상태·모듈 추가 필요
+- `deep`: 보안·결제·인증 관련
+
+⚠️ **Bash 도구 호출 시 반드시 `timeout: 1800000` (30분) 파라미터를 포함한다.** impl 루프는 최대 20분+ 소요.
+
+```bash
+PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
+PREFIX_ARGS=()
+[ -n "$PREFIX" ] && PREFIX_ARGS=(--prefix "$PREFIX")
+python3 ~/.claude/harness/executor.py impl \
+  --issue <QA가 생성한 이슈 번호> \
+  --depth <simple|std|deep> \
+  "${PREFIX_ARGS[@]}"
+```
+
+### CLEANUP → executor.sh impl (simple 강제)
+
+CLEANUP은 항상 `--depth simple`로 전달한다.
+
+```bash
+PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
+PREFIX_ARGS=()
+[ -n "$PREFIX" ] && PREFIX_ARGS=(--prefix "$PREFIX")
+python3 ~/.claude/harness/executor.py impl \
+  --issue <QA가 생성한 이슈 번호> \
+  --depth simple \
+  "${PREFIX_ARGS[@]}"
+```
+
+### DESIGN_ISSUE → ux 스킬 전달
+
+```
+---
+**디자인 이슈로 분류됨**
+
+[화면/컴포넌트] QA 분석에서 특정된 위치
+[문제] QA가 분석한 디자인 결함
+
+ux 스킬로 전달합니다. 계속 진행할까요?
+---
+```
+
+확인 후 ux 스킬을 실행한다. 이슈는 designer가 Phase 0-0에서 직접 생성한다.
+
+### SCOPE_ESCALATE / KNOWN_ISSUE → 유저 보고
+
+```
+---
+**[SCOPE_ESCALATE / KNOWN_ISSUE]**
+
+QA 분석 결과: <QA 에이전트 출력 요약>
+
+추천 조치:
+- SCOPE_ESCALATE: product-planner에게 기능 기획 위임 (/product-plan)
+- KNOWN_ISSUE: 재현 조건을 구체화한 후 재시도
+---
+```
+
+---
+
+## 디자인 경로
+
+디자인 이슈로 판정되면 ux 스킬로 넘긴다:
+
+```
+---
+**디자인 이슈로 분류됨**
+
+[화면] ...
+[요청] ...
+[참고] ...
+
+ux 스킬로 전달합니다. 계속 진행할까요?
+---
+```
+
+확인 후 ux 스킬을 실행한다 (ux 스킬이 TYPE/variant 수 선택 → designer 직접 호출).
+
+> ux 스킬 흐름: `commands/ux.md` 참조

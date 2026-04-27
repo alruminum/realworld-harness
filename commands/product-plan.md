@@ -1,0 +1,267 @@
+---
+name: product-plan
+description: 기능 추가/변경 요청을 명확히 정의한 뒤 하네스 기획-UX 루프(product-planner → plan-reviewer → ux-architect → validator(UX) → 유저 승인 ①)를 시작하고, 이후 설계 루프 → 구현 루프로 연결하는 스킬. 유저가 "기획자야", "기획아", "기능 추가할 게 생겼어", "피쳐 추가할 게 생겼어", "feature 추가", "이런 기능이 필요할 것 같아", "이런 기능이 빠진 것 같은데", "피쳐 추가", "새 기능", "새 피쳐", "기획해줘", "프로덕트 플랜" 등의 표현을 쓸 때 반드시 이 스킬을 사용한다.
+---
+
+# Product Plan Loop Skill
+
+유저의 기능 요청을 **5차원 모호성 인터뷰**로 구체화하고, 기획 준비도가 충분해지면 하네스 plan 루프를 시작한다.
+
+## 모호성 측정 (5차원)
+
+유저 메시지에서 아래 5차원의 명확도를 측정한다 (0~100%):
+
+| 차원 | 가중치 | 명확 기준 |
+|------|--------|----------|
+| **Goal** (목표) | 30% | 한 문장으로 "뭘 만드는가" 설명 가능 |
+| **User** (대상 유저) | 20% | 누가, 어떤 상황에서 쓰는지 |
+| **Scope** (범위) | 20% | MVP 포함/제외가 명시적 |
+| **Constraints** (제약) | 15% | 기술 스택, 플랫폼, 예산, 일정 |
+| **Success** (성공 기준) | 15% | 완료 판단 기준이 구체적 |
+
+### 점수 계산
+
+```
+명확도 = Goal×0.30 + User×0.20 + Scope×0.20 + Constraints×0.15 + Success×0.15
+모호성 = 100% - 명확도
+```
+
+### 측정 기준
+
+각 차원의 명확도를 아래 기준으로 판정:
+
+- **0~30%**: 언급 없음 또는 극히 모호 (예: "뭔가 만들고 싶어")
+- **30~50%**: 방향은 있으나 구체성 부족 (예: "대시보드 만들자")
+- **50~70%**: 핵심은 명확하나 세부 미정 (예: "YouTube 댓글 분석 대시보드, 감성 분석 포함")
+- **70~90%**: 대부분 명확, 일부 보충 필요 (예: "Next.js, 댓글 100개 제한, 차트 3종")
+- **90~100%**: 완전 명확 (예: "감성 분포 파이차트 + 키워드 클라우드 + 시간대별 추이")
+
+## 인터뷰 규칙
+
+### 게이트
+
+| 모호성 | 상태 | 행동 |
+|--------|------|------|
+| >60% | 질문 필수 | 가장 약한 차원 타겟 질문 |
+| 20~60% | 질문 권장 | 유저가 "그만"하면 진행 가능. 경고 표시 |
+| <20% | 진행 가능 | 기획 준비도 리포트 출력 → plan 루프 시작 |
+
+### 라운드 규칙
+
+- 라운드당 **1~2개 질문** — 가장 약한 차원을 타겟
+- 질문 시 **어떤 차원을 묻는지 명시**: "범위(Scope)를 좀 더 알고 싶은데요 —"
+- 이미 답변한 내용은 다시 묻지 않는다
+- 라운드 5 도달: "5라운드 경과. 현재 명확도 N%. 계속할까요?"
+- 라운드 8 도달: "지금까지 나온 내용으로 보면 [요약]. 혹시 빠진 게 있나요?" (수렴 유도)
+- 라운드 10 하드 리밋: 모호성 관계없이 현재 상태로 진행 가능 (유저 선택)
+- 유저가 아무 라운드에서든 "됐어", "그만", "진행해", "ㅇㅇ 시작" → 즉시 진행 (모호성 경고 포함)
+
+## 기획 준비도 리포트
+
+모호성 20% 미만 도달 시 (또는 유저가 조기 진행 선택 시) 아래 리포트를 출력:
+
+```
+---
+기획 준비도: N% (모호성 M%)
+
+| 차원 | 명확도 | 상태 | 수집 내용 |
+|------|--------|------|----------|
+| 목표 (Goal) | 95% | 🟢 | YouTube 댓글 감성 분석 대시보드 |
+| 대상 유저 (User) | 80% | 🟢 | 마케팅팀, 캠페인 반응 분석 |
+| 범위 (Scope) | 70% | 🟡 | MVP: 감성 분석 + 차트. 이후 기능 미정 |
+| 제약 (Constraints) | 85% | 🟢 | Next.js, YouTube API, 2주 |
+| 성공 기준 (Success) | 75% | 🟡 | 파이차트 + 키워드 클라우드 (수치 목표 없음) |
+
+이대로 plan 루프 시작할까요?
+---
+```
+
+## 실행 절차
+
+### 1단계: 초기 측정 + 인터뷰
+
+유저 메시지를 받으면:
+1. 5차원 명확도 초기 측정
+2. 모호성 >60%이면 가장 약한 차원부터 질문 시작
+3. 모호성 <20% 도달하거나 유저가 조기 진행 → 준비도 리포트 출력
+
+### 2단계: 유저 확인
+
+- 긍정 응답 ("응", "ㅇㅇ", "ok", "고", "실행", "그래") → 3단계 진행
+- 수정 요청 → 해당 차원 점수 갱신 후 리포트 재출력
+- 취소 → 종료
+
+### 3단계: 하네스 plan 루프 실행
+
+⚠️ **CRITICAL: Bash 도구 호출 시 반드시 `timeout: 3600000` 파라미터를 포함한다.**
+plan 루프는 에이전트 5개가 순차 실행되어 최대 40분 소요. Bash 기본 timeout(20분)으로는 완주 불가.
+
+Bash 도구 호출 형식 (timeout 필수):
+```
+command: |
+  PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
+  PREFIX_ARGS=()
+  [ -n "$PREFIX" ] && PREFIX_ARGS=(--prefix "$PREFIX")
+  python3 ~/.claude/harness/executor.py plan \
+    --context "[준비도 리포트 전문 + 5차원 수집 내용]" \
+    "${PREFIX_ARGS[@]}"
+timeout: 3600000
+```
+
+GitHub 이슈 번호를 유저가 언급했으면 `--issue <N>` 추가.
+
+### 4단계: CLARITY_INSUFFICIENT 수신 시
+
+plan 루프가 `CLARITY_INSUFFICIENT`를 반환하면 product-planner가 추가 정보를 요청한 것:
+
+1. product-planner가 제시한 **"질문 제안"**을 유저에게 전달
+2. 유저 답변 수집
+3. 준비도 리포트의 해당 차원 점수 갱신
+4. plan 루프 재실행 (**timeout: 3600000 필수**):
+   ```
+   command: |
+     python3 ~/.claude/harness/executor.py plan \
+       --context "[갱신된 리포트 + 추가 답변 + PRD 초안: prd-draft.md]" \
+       "${PREFIX_ARGS[@]}"
+   timeout: 3600000
+   ```
+5. **최대 2회 반복**. 3회째 CLARITY_INSUFFICIENT가 오면:
+   "product-planner가 여전히 정보 부족을 보고합니다. 현재 상태로 강제 진행할까요?"
+   → 유저 선택
+
+### 4.5단계: UX_SKIP 분기 (UI 없는 기능)
+
+plan 루프가 `UX_SKIP`을 리턴하면 PRD에 화면이 없는 순수 로직 기능이다.
+ux-architect, designer를 모두 스킵하고 architect(SD)만 실행하는 축약 경로로 진행:
+
+```
+UX_SKIP → 유저에게 알림:
+  "UI 없는 기능입니다. UX Flow/디자인 없이 설계 루프로 직행합니다."
+→ 6단계에서 designer 호출 스킵 (architect SD만 단독 실행)
+→ 7단계 → 8단계
+```
+
+### 4.7단계: PLAN_REVIEW_CHANGES_REQUESTED 수신 시
+
+plan 루프가 `PLAN_REVIEW_CHANGES_REQUESTED`를 리턴하면 plan-reviewer(기획팀장 + 경쟁분석 + 과금설계 + 기술실현성 4개 전문성)가 8개 차원 중 하나 이상을 FAIL로 판정한 것이다.
+**이 시점에 ux-architect는 아직 호출되지 않았다** — UX Flow 재작업 비용 없이 PRD만 고치면 된다.
+
+1. plan-reviewer 리포트 전문을 **재요약·압축 없이 원문 그대로** 유저에게 전달
+2. 유저에게 3지선다 제시:
+   - **A. 수정 반영** → 4.7.a로 진행 (planner만 재실행 — UX Flow 아직 없음)
+   - **B. 그대로 진행 (override)** → 4.7.b로 진행
+   - **C. 취소** → 종료
+3. 유저 응답 수집 후 아래 분기 실행
+
+#### 4.7.a 수정 반영
+
+- `{prefix}_plan_metadata.json`에서 `prd_path` 삭제 (또는 파일 전체 삭제) + plan 루프 재호출
+- reviewer가 "유저 확인 필요 (설계 가정 자체가 흔들림)"를 체크한 경우, 먼저 유저와 가정 재확인 후 planner에 반영
+
+context에는 reviewer 리포트의 "수정 요청 항목" 섹션을 포함:
+```
+command: |
+  python3 ~/.claude/harness/executor.py plan \
+    --context "[plan-reviewer 리포트 수정 요청 항목 전문 + 이전 준비도 리포트]" \
+    "${PREFIX_ARGS[@]}"
+timeout: 3600000
+```
+
+#### 4.7.b 그대로 진행 (override)
+
+유저가 reviewer 지적을 수용하지 않고 원안 그대로 진행하기로 결정한 경우:
+
+```bash
+PREFIX=$(python3 -c "import json; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix','mb'))" 2>/dev/null || echo "mb")
+touch "$(pwd)/.claude/harness-state/${PREFIX}_plan_review_override"
+```
+
+그 후 plan 루프를 재호출하면 planner는 체크포인트로 스킵되고, reviewer도 override 플래그로 스킵되어 ux-architect → validator(UX) → UX_REVIEW_PASS 순으로 진행된다 (플래그는 1회성 — 자동 삭제).
+
+### 5단계: 유저 승인 ① (PRD + UX Flow)
+
+기획-UX 루프가 `UX_REVIEW_PASS`를 리턴하면 유저에게 결과를 보여주고 승인을 받는다:
+
+```
+---
+기획-UX 루프 완료
+
+**PRD**: prd.md
+**UX Flow**: docs/ux-flow.md
+- 화면 N개, 플로우 M개 경로
+- 와이어프레임 + 인터랙션 + 상태 정의 포함 (docs/ux-flow.md 내)
+
+확인 후 승인/수정 요청해주세요.
+(수정 시: "화면 추가", "플로우 변경", "비기능 변경" 중 어떤 종류인지 알려주세요)
+---
+```
+
+수정 요청 시 라우팅 ([orchestration-rules.md](../orchestration-rules.md) 기준):
+- **화면 추가/삭제** → planner(PRODUCT_PLAN_CHANGE) + ux-architect 재실행
+  - 체크포인트 리셋 필요: `{prefix}_plan_metadata.json`에서 `prd_path`, `ux_flow_doc` 키를 삭제하고 plan 루프 재호출
+- **기존 화면 내 변경** → ux-architect만 재실행
+  - 체크포인트 리셋: `{prefix}_plan_metadata.json`에서 `ux_flow_doc` 키만 삭제
+- **비기능 변경** → planner(PRODUCT_PLAN_CHANGE)만 재실행
+  - 체크포인트 리셋: `{prefix}_plan_metadata.json`에서 `prd_path` 키만 삭제
+
+### 5.5단계: 이슈 동기화 (ISSUE_SYNC)
+
+유저 승인 ① 확정 후, 설계 루프 진입 전에 planner ISSUE_SYNC 모드를 호출하여 stories.md ↔ GitHub 이슈를 동기화한다.
+
+```
+subagent_type: product-planner
+prompt: |
+  @MODE:PLANNER:ISSUE_SYNC
+  @PARAMS: { "stories_path": "[stories.md 경로]", "prd_path": "prd.md" }
+```
+
+결과: `ISSUES_SYNCED` 마커 + 이슈 번호 목록. stories.md에 `관련 이슈: #NNN` 추가.
+
+**첫 실행 (이슈 없음)**: 모든 스토리에 대해 GitHub 이슈 신규 생성.
+**재호출 (수정 후 재승인)**: diff 비교 → 추가된 스토리 이슈 생성 / 삭제된 스토리 이슈 close / 변경된 스토리 이슈 body 업데이트.
+
+### 6단계: 설계 루프 트리거
+
+ISSUE_SYNC 완료 후 메인 Claude가 Agent 도구 2개를 **병렬**로 직접 호출한다.
+**executor.py 경유 아님 — 메인 Claude가 직접 오케스트레이션.**
+상세: [orchestration/system-design.md](../orchestration/system-design.md)
+
+```
+# Agent 도구 2개를 단일 메시지에서 병렬 호출:
+
+# 1) architect(SD) — Agent 도구 (이슈 번호 불필요 — SYSTEM_DESIGN은 전체 구조 설계)
+subagent_type: architect
+prompt: |
+  @MODE:ARCHITECT:SYSTEM_DESIGN
+  @PARAMS: { "plan_doc": "prd.md", "ux_flow_doc": "docs/ux-flow.md" }
+
+# 2) designer — Agent 도구 (UX Flow 디자인 테이블 화면별 ONE_WAY 순차)
+subagent_type: designer
+prompt: |
+  @MODE:DESIGNER:SCREEN_ONE_WAY
+  @PARAMS: { "target": "[화면명]", "ux_goal": "[UX Flow 기반]", "skip_issue_creation": true, "save_handoff_to": "docs/design-handoff.md" }
+```
+
+### 7단계: 디자인 승인
+
+architect(SD) SYSTEM_DESIGN_READY + designer DESIGN_HANDOFF 완료 후:
+- validator Design Validation 실행
+- DESIGN_REVIEW_PASS → 유저에게 architecture.md + Pencil 캔버스 확인 요청
+- 유저 승인 후 `design_critic_passed` 플래그 세팅:
+  ```bash
+  PREFIX=$(python3 -c "import json; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix','mb'))" 2>/dev/null || echo "mb")
+  mkdir -p "$(pwd)/.claude/harness-state/.flags"
+  touch "$(pwd)/.claude/harness-state/.flags/${PREFIX}_design_critic_passed"
+  ```
+- → 8단계
+
+### 8단계: 구현 루프 트리거
+
+디자인 승인 후 구현 루프 진입. 상세: [orchestration/impl.md](../orchestration/impl.md)
+
+```
+python3 ~/.claude/harness/executor.py impl \
+  --impl <impl_path> \
+  --issue <N> \
+  "${PREFIX_ARGS[@]}"
+```
