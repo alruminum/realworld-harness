@@ -7,6 +7,7 @@
 | `HARNESS-CHG-20260427-01` | 2026-04-27 | spec | RealWorld Harness 플러그인 배포 레포 부트스트랩 | — |
 | `HARNESS-CHG-20260427-02` | 2026-04-27 | spec | Phase 1 마이그레이션 계획 + ~/.claude 활성 코드 인벤토리 | — |
 | `HARNESS-CHG-20260427-03` | 2026-04-27 | spec | Phase 2 — Core Invariant + agent_tiers + 거버넌스 자동 게이트 + bypass 제거 | — |
+| `HARNESS-CHG-20260427-04` | 2026-04-27 | spec | Phase 3 [3.1] 독립 정본화 — 마이그레이션 흔적 + 개인 식별자 + 추상어 정리 | — |
 
 ---
 
@@ -112,6 +113,49 @@
 - `docs/proposals.md §3` 제안 A/B/C
 - `docs/proposals.md §6` 거버넌스 통합 방안
 - 유저 결정 (2026-04-27): A·B·D 추천대로, C는 옵션 A(완전 제거)
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260427-04` — 2026-04-27 — Phase 3 [3.1] 독립 정본화
+
+**Type**: spec
+
+**Summary**: 마이그레이션 흔적·개인 식별자·추상 용어를 정리해 RWHarness 문서를 *외부 배포용 정본*으로 독립화. 외부 사용자가 docs/를 읽을 때 "이 시스템은 ~/.claude 에서 옮겨졌다"는 historical artifact 인상이나 특정 개인 정보 노출 없이 자체 완결되도록.
+
+**Files** (15):
+- `docs/harness-spec.md` — 헤더 마이그레이션 표기 제거 / §0 추상어 정리 ("결정론 > 적응성" → "예측 가능성을 자유로운 적응보다 우선", "프로덕션 분파에 정렬" → "실제 서비스 코드를 만드는 데 쓴다") / §1 "시니어 엔지니어 dongchan" → "프로젝트 운영자"
+- `docs/harness-architecture.md` — 헤더 마이그레이션 표기 제거 / §2.2 hardcarry/softcarry bypass 행 → `.no-harness` 마커 / §5.1 화이트리스트 예시 일반화
+- `README.md` — "데모/연구 분파가 아니라 프로덕션 분파에 정렬" → "데모나 연구용 도구가 아니라, 실제 서비스에 들어가는 코드를 만드는 데 쓴다"
+- `.claude-plugin/plugin.json` — author.name "dongchan kim" → "alruminum"
+- `docs/proposals.md` — "프로덕션 분파에 정확히 정렬" → "실제 서비스 운영 쪽 흐름에 정확히 맞춰져 있다" / dongchan-style 표현 일반화
+- `docs/migration-plan.md` — dongchan-style / dongchan 표현 일반화
+- `docs/analysis-current-harness.md` — 화이트리스트 예시 일반화 / dongchan 일반화
+- `docs/plan-plugin-distribution.md` — dongchan-style 표현 3곳 일반화
+- `commands/ux.md` — `/Users/dc.kim/project/...` → `${HOME}/project/<project-name>/...`
+- `hooks/harness-review-trigger.py` — 주석 dc.kim 경로 일반화
+- `hooks/agent-boundary.py` — 주석 jajang #99 → 일반화
+- `harness/impl_loop.py` — 주석 jajang attempt → 실측
+- `harness/impl_router.py` — 주석 jajang 통계 → 실측
+- `agents/ux-architect.md` — 주석 jajang 사례 → 일반화
+- `agents/engineer.md` — 주석 jajang 로그 → 실측
+- `orchestration/{changelog,rationale}.md` — 본 항목 (WHAT/WHY)
+
+**검증**:
+- ✓ `dongchan` 잔존 0건 (LICENSE 저작권자 + orchestration/upstream/* 제외)
+- ✓ `/Users/dc.kim/` 절대 경로 잔존 0건 (upstream 제외)
+- ✓ `jajang|memoryBattle|HardcarryDryRun` 잔존 0건 (upstream 제외)
+- ✓ "에서 마이그레이션됐다", "원본 source: ~/" 잔존 0건
+- ✓ "분파" 잔존 0건
+
+**보존 (의도적)**:
+- `LICENSE` Copyright "dongchan kim" — 저작권 표기, 법적 필수
+- `orchestration/upstream/*` — `~/.claude/orchestration/` 원본 보존본 (참조 정본). 본 디렉토리 정체성은 별도 sub-commit으로 README 추가 예정
+
+**Linked**:
+- 유저 명시 (2026-04-27): "~/.claude/docs/harness-spec.md 에서 마이그레이션됐다 이런 ~/.claude 관련 내용들은 싹다 빼주고", "내 이름을 명시하는 내용도 검사해서 뺴줘", "분파가 뭐야? 이런거 현실세계의 언어로 좀 바꿔줘"
+- `HARNESS-CHG-20260427-02` Phase 1 (마이그레이션 본격) 산출물 정리
 
 **Exception**: —
 

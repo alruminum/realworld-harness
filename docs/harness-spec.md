@@ -1,13 +1,9 @@
-# Harness Spec (PRD 대체) — RealWorld Harness
+# Harness Spec (PRD 대체)
 
-> RealWorld Harness 플러그인 배포판의 목적·불변식·게이트·비목표 정의.
+> RealWorld Harness 플러그인의 목적·불변식·게이트·비목표 정의.
 > 일반 제품 PRD가 아닌, 메타 시스템(코딩 에이전트 오케스트레이션)의 운영 헌법.
->
-> **본 문서는 `~/.claude/docs/harness-spec.md` 에서 마이그레이션됐다** (RealWorld Harness가 `~/.claude/` 하네스의 플러그인 배포판이므로). 본문은 source 그대로 보존하고, RWHarness 컨텍스트(플러그인 배포)에 맞춰 점진적으로 갱신될 예정이다. **Phase 2에 §0 Core Invariant 신규 추가 예정** (architect 위임).
 
-마이그레이션: 2026-04-27 (Phase 1 — `HARNESS-CHG-20260427-02`)
-갱신: 2026-04-27 (Phase 2 — `HARNESS-CHG-20260427-03`) — §0 Core Invariant 신규 추가
-원본 source: `~/.claude/docs/harness-spec.md` @ main `2c231c3`
+작성: 2026-04-27 / 최근 갱신: §0 Core Invariant 추가 (`HARNESS-CHG-20260427-03`)
 
 ---
 
@@ -20,14 +16,14 @@
 
 1. **워크플로우 변경에는 명시적 거버넌스가 필요하다** — `orch-rules-first` 훅 + Task-ID(`HARNESS-CHG-YYYYMMDD-NN`) + WHAT/WHY 분리 로그 (`orchestration/changelog.md` + `rationale.md`).
 2. **에이전트 능력 향상은 *고정된 게이트 안에서만* 작동한다** — 모델이 Opus 4.7 → 5.0 → 6.0 으로 진화하더라도, `architect → engineer → validator → pr-reviewer` 핸드오프 경로는 변하지 않는다. `agent_tiers` (harness.config.json)는 이 분리를 코드로 강제한다.
-3. **프로덕션 코드 경로에서는 결정론(determinism) > 적응성(adaptability)** — 자율 에이전트가 *알아서* 복구하는 패턴 대신, 명시적 ESCALATE → 유저 게이트 → 재계약(SPEC_GAP) 흐름을 강제. 재현성과 추적성이 적응성보다 우선.
-4. **자율 에이전트보다 결정론적 분업이 우위인 도메인** — 신뢰성, 재현성, B2B 적합성, 6개월+ 단위 유지보수성. 본 시스템은 데모/연구가 아닌 *프로덕션* 분파에 정렬돼있다.
+3. **실제 서비스 코드 경로에서는 예측 가능성을 자유로운 적응보다 우선한다** — 자율 에이전트가 *알아서* 복구하는 패턴 대신, 명시적 ESCALATE → 유저 게이트 → 재계약(SPEC_GAP) 흐름을 강제. 같은 입력에 같은 결과(재현성)와 누가 무엇을 결정했는지 추적 가능성이 자유로운 적응보다 중요하다.
+4. **자율 에이전트보다 역할별 분업이 더 잘 맞는 영역** — 신뢰성, 재현성, B2B 적합성, 6개월 이상 유지보수가 필요한 코드. 본 시스템은 데모나 연구용이 아니라, *실제 서비스에 들어가는 코드를 만드는 데 쓰는 것*을 목표로 한다.
 
 ### 적용 범위
 
 본 §0은 RealWorld Harness의 **철학적 헌법**이다. §1~6의 모든 게이트·불변식·비목표는 본 §0의 구체화 표현이다.
 
-- 본 §0을 약화시키는 변경(예: 게이트 우회, 에이전트 자율성 확대, 결정론 완화)은 PR title에 `[invariant-shift]` 토큰을 명시한다.
+- 본 §0을 약화시키는 변경(예: 게이트 우회, 에이전트 자율성 확대, 예측 가능성 완화)은 PR title에 `[invariant-shift]` 토큰을 명시한다.
 - 해당 PR은 `orchestration/rationale.md` 의 4섹션(Rationale / Alternatives / Decision / Follow-Up) 중 **Alternatives**에 *왜 이 워크플로우 불변식이 깨져야 하는가*를 명시 필수.
 - 자동 게이트(`scripts/check_doc_sync.py`, Phase 2.5+)는 `[invariant-shift]` PR 제목에 `Document-Exception:` 라인이 동반되지 않으면 머지 차단.
 
@@ -42,7 +38,7 @@
 
 핵심 사용자는 두 부류:
 - **메인 Claude (오케스트레이터)** — 루프 게이트 통과 여부를 확인하고 다음 단계 에이전트를 호출.
-- **시니어 엔지니어 dongchan** — 에이전트 산출물을 검수하고 게이트 승인을 내림. 코드는 직접 거의 쓰지 않음.
+- **프로젝트 운영자 (시니어 엔지니어 / 리드)** — 에이전트 산출물을 검수하고 게이트 승인을 내림. 코드는 직접 거의 쓰지 않음.
 
 ---
 

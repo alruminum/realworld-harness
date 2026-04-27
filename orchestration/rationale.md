@@ -47,7 +47,7 @@
 | Change-Type 분류 | TDM의 6종(api/policy/implementation/build-release/test/docs-only)이 아닌 RWHarness 구조 반영 5종(spec/infra/agent/docs/test) |
 | security-reviewer 통합 | 옵트인 (`harness.config.json` 플래그) |
 | 워크트리 격리 기본값 | `true` 유지 (HARNESS-CHG-20260427-01 결정 따름) |
-| dongchan-style + softcarry/hardcarry | 배포판 완전 배제 (별도 `dongchan-pack` 사이드 플러그인으로 보관 옵션) |
+| 개인 스타일 가이드 + softcarry/hardcarry | 배포판 완전 배제 (사용자 개인 보관은 별도 사이드 플러그인 또는 fork) |
 
 ### Follow-Up
 
@@ -94,7 +94,7 @@ HARNESS-CHG-20260427-02 [1.3] harness/ 마이그레이션 (Python 11개 + Shell 
 추가 결정:
 - **`orchestration/` 디렉토리 충돌 회피**: ~/.claude/orchestration/policies.md를 RWHarness/orchestration/policies.md로 그대로 복사하면 RWHarness의 거버넌스 policies.md(2026-04-27 신규 작성, Task-ID 룰)와 충돌. → `orchestration/upstream/` 서브디렉토리로 분리 복사.
 - **경로 추상화는 Phase 1.7 일괄 적용**: 1.2~1.6에서 *원본 그대로 복사*하고, 1.7에서 일괄 sed/grep으로 `Path.home()` → `Path(os.environ.get('CLAUDE_PLUGIN_ROOT', Path.home() / '.claude'))` 변환. 이유: 코드 정확성 검증을 *복사*와 *변환* 두 단계로 분리.
-- **개인용 파일 검증은 Phase 1 종료 시 grep**: 1.2~1.6 진행 중엔 직관적으로 제외. 종료 시점에 `grep -ri "hardcarry|softcarry|dongchan"` 으로 누락 검증 (`docs/migration-plan.md §6` 체크리스트).
+- **개인용 파일 검증은 Phase 1 종료 시 grep**: 1.2~1.6 진행 중엔 직관적으로 제외. 종료 시점에 `grep -ri "hardcarry|softcarry"` + 개인 스타일 가이드 디렉토리명으로 누락 검증 (`docs/migration-plan.md §6` 체크리스트).
 
 ### Follow-Up
 
@@ -108,14 +108,14 @@ HARNESS-CHG-20260427-02 [1.3] harness/ 마이그레이션 (Python 11개 + Shell 
 - ~/.claude 활성 코드 100% 마이그레이션 (Python 34 + .md 73 + JSON/SH 등)
 - PLUGIN_ROOT 추상화 도입 — `${CLAUDE_PLUGIN_ROOT}` 환경변수 폴백 ~/.claude
 - hooks/hooks.json 작성 — 플러그인 마켓플레이스 install 시 자동 활성화 가능
-- 개인용(hardcarry/softcarry/dongchan-style) 파일 단위 100% 배제
+- 개인용(hardcarry/softcarry/개인 스타일 가이드) 파일 단위 100% 배제
 
 **Phase 2 인계 (다음 Task-ID로)**:
 - `harness-spec.md §0` Core Invariant 신규 작성 (proposals.md §3 제안 B)
 - README 메인 카피 — "Production-grade Agent Workflow Engine" (proposals.md §3 제안 A)
 - `harness.config.json` `agent_tiers` 옵션 도입 (proposals.md §3 제안 C)
 - **`hooks/agent-gate.py` + `hooks/agent-boundary.py` 의 hardcarry/softcarry bypass 로직 정리**
-  - 옵션 1: 완전 제거 (RWHarness는 dongchan 컨셉 무관)
+  - 옵션 1: 완전 제거 (RWHarness는 특정 개인의 임시 과제 컨셉과 무관)
   - 옵션 2: 일반화 (`HARNESS_BYPASS=1` env 같은 generic flag로 추상화)
   - 결정 필요 — 옵션 2가 더 유연 (외부 사용자가 자기 과제용 bypass 활용 가능)
 - `scripts/check_doc_sync.py` (Python 자동 게이트, proposals.md §6 통합형 거버넌스)
@@ -187,6 +187,47 @@ Phase 1(코어 마이그레이션) 종료(`HARNESS-CHG-20260427-02`) 후 Phase 2
 **남은 의식적 부채**:
 - `setup-project.sh` 가 플러그인 모드에서 사용자 ~/.claude/settings.json 의 hooks 섹션을 *여전히* 수정 — 이는 `if [ -z "$CLAUDE_PLUGIN_ROOT" ]` 분기로 감싸야 하나 큰 변경이라 Phase 3 또는 별도 sub-commit으로 미룸
 - `setup-project.sh` 의 `gh api` 호출(마일스톤·레이블 자동 생성)은 RWHarness 거버넌스 룰과 직접 연관 없음 — 분리 검토 필요 (v1.1)
+
+---
+
+---
+
+## `HARNESS-CHG-20260427-04` — 2026-04-27
+
+### Rationale
+
+Phase 0~2 완료 시점에서 RWHarness 문서·코드에 *마이그레이션 작업의 흔적*과 *특정 개인의 식별 정보*가 다수 잔존했음을 발견. 외부 사용자(마켓플레이스 install 후 docs/ 둘러보기)가 보면 다음 두 인상이 동시에 남는다:
+
+1. *"이 시스템은 외부의 다른 곳(~/.claude)에서 옮겨진 historical artifact다"* — `에서 마이그레이션됐다`, `원본 source: ~/.claude/...` 같은 헤더가 그 인상의 주범. RWHarness가 자체 정본이라는 신호를 약화시킨다.
+2. *"이 시스템은 특정 개인(dongchan)의 개인 도구이거나, 그 사람의 환경 가정이 박혀있다"* — `시니어 엔지니어 dongchan`, `/Users/dc.kim/`, `jajang`, `memoryBattle`, `HardcarryDryRun`, `dongchan-style/`, `dongchan-pack` 같은 식별자. 마켓플레이스 일반 사용자에겐 무관하고 노이즈.
+
+추가로 §0 Core Invariant 와 README 의 한국어 본문에 "분파" 같은 한자어 추상 용어가 등장 — 유저 명시 ("분파가 뭐야? 이런거 현실세계의 언어로 좀 바꿔줘") — 사용자 첫 인상에서 코드 메타용어와 일상어가 섞여 가독성 저하.
+
+### Alternatives
+
+| 대상 | 옵션 (a) | 옵션 (b) | 선택 | 근거 |
+|---|---|---|---|---|
+| 마이그레이션 헤더 | 그대로 유지 (history 보존 명목) | 헤더 제거, 독립 정본화 | **(b)** | 외부 사용자가 보는 docs/ 는 *현재 정본*이지 *마이그레이션 일지*가 아니다. history는 git log + orchestration/changelog.md 에 충분 |
+| dongchan 명시 | 그대로 (작성자 attribution) | 일반화 ("프로젝트 운영자") | **(b)** | 유저 명시 요청. attribution 은 LICENSE + plugin.json author 에 한정 |
+| dc.kim 절대 경로 | 그대로 (예시 사실성) | `${HOME}/...`/`<your-name>` 일반화 | **(b)** | 외부 사용자 환경에 직접 적용 가능한 표기가 더 실용적 |
+| jajang/memoryBattle 사례 | 코드 주석에 명시적 인용 (실전 출처 명시) | "실측"/"실전 사례"로 추상화 | **(b)** | 외부 사용자에겐 어떤 프로젝트인지 무관. 의미만 살리면 충분 |
+| 추상 한자어 ("분파") | 코드 메타용어 그대로 | 일상 한국어로 풀어쓰기 | **(b)** | 유저 명시. spec/README 가독성 우선 |
+| upstream/ 디렉토리 dongchan/dc.kim | 일관성 위해 같이 정리 | 원본 그대로 보존 (참조 정본) | **보존** | upstream 은 *~/.claude 원본 스냅샷* 의미. 손대면 정체성 무너짐. 별도 README 로 의도 명시 예정 |
+| plan-plugin-distribution.md (유저가 직접 쓴 plan) | 보존 | 단어 수준 일반화 | **단어만** | 큰 의미 변경 없이 식별자만 일반화. 원본 의도 보존 + 외부 노출 우려 해소 |
+| LICENSE Copyright | 익명화 | 저작권자 명기 (법적 표준) | **명기 유지** | 저작권 표기는 법적 필수 |
+
+### Decision
+
+(b) 옵션 일관 채택. upstream/ 보존 + LICENSE 보존 만 예외. plugin.json author 는 GitHub username(`alruminum`)으로 일반화 (이메일은 유지 — 컨택 채널).
+
+### Follow-Up
+
+- 본 sub-commit: `HARNESS-CHG-20260427-04` [3.1]
+- 다음 sub-commit 후보 ([3.2]+):
+  - `orchestration/upstream/README.md` 신규 — "이 디렉토리는 ~/.claude 운영 룰의 원본 스냅샷이다. RWHarness 의 실제 운영 룰은 상위 `orchestration/{policies,changelog,rationale}.md` 참조. 본 디렉토리는 historical reference 로만 보존" 명시
+  - 본문 ~/.claude/* 경로 참조가 docs/harness-architecture.md 본문(§1, §2 등)에 다수 잔존 — Phase 3 후속 sub-commit
+  - GitHub Actions workflow (PR 단계 자동 게이트)
+  - clean install smoke test
 
 ---
 

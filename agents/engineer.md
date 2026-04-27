@@ -186,7 +186,7 @@ impl 파일에 `## Design Ref` 섹션이 있으면 (설계 루프에서 designer
 
 ### 재시도 출력 규칙 (attempt 1+)
 
-attempt 0은 풀 컨텍스트로 진행. **attempt 1 이상에서는 출력 토큰을 최소화**한다 — 같은 작업의 풀 패키지를 매번 다시 출력하지 마라. (jajang 로그 분석: engineer out_tok 20K~37K 폭주가 ESCALATE 비용의 80%를 차지.)
+attempt 0은 풀 컨텍스트로 진행. **attempt 1 이상에서는 출력 토큰을 최소화**한다 — 같은 작업의 풀 패키지를 매번 다시 출력하지 마라. (실측: engineer out_tok 20K~37K 폭주가 ESCALATE 비용의 80%를 차지.)
 
 - ❌ 금지: 직전 attempt와 동일한 파일 내용을 처음부터 끝까지 다시 출력
 - ❌ 금지: 직전 attempt의 의사결정/탐색 과정을 새 단어로 재서술

@@ -189,7 +189,7 @@ def main():
     # 에이전트 간 인수인계 문서(`{prefix}_handoffs/attempt-N/{from}-to-{to}.md`)는
     # 정당한 통로다. 위 HARNESS_INFRA_PATTERNS의 `[./]claude/`가 이걸 차단해 버려
     # engineer가 validator 피드백을 못 읽고 빈 출력으로 timeout 반복하는 사례 발생
-    # (jajang #99 dual-theme 32파일 마이그레이션, $8.45 손실).
+    # (실전 사례: dual-theme 32파일 마이그레이션 시 $8.45 손실 발생).
     # 핸드오프 디렉토리는 모든 에이전트가 Read 가능. Write는 generate_handoff()
     # 헬퍼 경로 (engineer/architect 등 ALLOW_MATRIX 매칭) 또는 harness 내부에서만.
     HANDOFF_PATH_RE = re.compile(r'(^|/)[A-Za-z0-9_-]+_handoffs/')

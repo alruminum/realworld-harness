@@ -39,7 +39,7 @@
 
 ### 2-3. 결론
 
-**유저의 "워크플로우 불변" 철학은 트렌드와 동떨어진 게 아니라, 현재 SOTA의 *프로덕션* 분파에 정확히 정렬돼 있다.** 데모/연구 트렌드는 자율성 극대화로 가지만, 실제 프로덕트에 들어가는 코드 작성 — 특히 B2B/엔터프라이즈 — 는 게이트·검증·재현성이 필수다. 유저 철학은 이쪽이다.
+**유저의 "워크플로우 불변" 철학은 트렌드와 동떨어진 게 아니라, 현재 SOTA 중 *실제 서비스 운영* 쪽 흐름에 정확히 맞춰져 있다.** 데모/연구 트렌드는 자율성 극대화로 가지만, 실제 프로덕트에 들어가는 코드 작성 — 특히 B2B/엔터프라이즈 — 는 게이트·검증·재현성이 필수다. 유저 철학은 이쪽이다.
 
 다만 "워크플로우 절대 불변"으로 보일 수 있는 표현은 약간 조정이 필요하다 — 워크플로우는 진화하되, 진화 비용을 의도적으로 비싸게 만든다(orch-rules-first 훅 + 문서 먼저 코드 나중). 이게 더 정확한 표현.
 
@@ -99,7 +99,7 @@ Therefore:
 분석에서 확인된 P0 정리 + 위 제안을 합쳐 다음 순서:
 
 ### Phase 0 — 클린업 + 거버넌스 골격 (1~1.5일)
-1. `.bak` 11개 + `dongchan-style/` + 개인 커맨드 배제 (RWHarness에는 처음부터 미포함)
+1. `.bak` 11개 + 개인 스타일 가이드 디렉토리 + 개인 임시 커맨드 배제 (RWHarness에는 처음부터 미포함)
 2. LICENSE (MIT) + CHANGELOG.md(v1.0.0 골격) + README 골격
 3. RWHarness 디렉토리 구조 셋업: `.claude-plugin/`, `hooks/`, `agents/`, `harness/`, `commands/`, `orchestration/`, `templates/`, `scripts/`, `tests/`
 4. **거버넌스 가벼운 버전** (§6 통합 방안):
@@ -139,7 +139,7 @@ Therefore:
 | 마켓플레이스 플러그인 ID | `realworld-harness` / `rw-harness` / `harness-engineering` | **`realworld-harness`** (실제 이름 그대로) |
 | security-reviewer 통합 | 통합 / 옵트인 / 배제 | **옵트인** (`harness.config.json` 플래그) — 5루프에 추가하면 비용↑ |
 | `agent_tiers` 도입 시점 | Phase 1 / Phase 2 / 별도 에픽 | **Phase 2** (제안 C, 큰 코드 변경 없음) |
-| dongchan-style + softcarry/hardcarry | 완전 배제 / 별도 fork 보관 / 옵션 패키지 | **완전 배제** (배포판) + 별도 `dongchan-pack` 사이드 플러그인 (개인 보관) |
+| 개인 스타일 가이드 + softcarry/hardcarry | 완전 배제 / 별도 fork 보관 / 옵션 패키지 | **완전 배제** (배포판). 사용자 개인 보관은 별도 사이드 플러그인 또는 fork 활용 |
 | BATS → pytest 잔여 migration | 배포 전 / 후 | **배포 후** (현재 parity 34/34, 배포 차단 요소 아님) |
 | 워크트리 격리 기본값 | true (현재) / false / 옵션 | **true 유지** (HARNESS-CHG-20260427-01 결정 따름) |
 | 거버넌스 시스템 도입 | 그대로 채택 / 통합형 / 미채택 | **통합형** (§6 참조) |

@@ -27,7 +27,7 @@ REVIEW_SCRIPT = str(PLUGIN_ROOT / "scripts" / "harness-review.py")
 
 def _cwd_to_proj_hash(cwd):
     """CWD를 Claude 프로젝트 디렉토리 해시로 변환한다.
-    Claude 내부 규칙: / → -, . → - (예: /Users/dc.kim/.claude → -Users-dc-kim--claude)
+    Claude 내부 규칙: / → -, . → - (예: /Users/&lt;name&gt;/.claude → -Users-&lt;name&gt;--claude)
     """
     return cwd.replace("/", "-").replace(".", "-")
 

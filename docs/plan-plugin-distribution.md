@@ -11,7 +11,7 @@
 
 - **배포 채널**: Claude Code 플러그인 마켓플레이스 단일. oh-my-zsh `install.sh` 안은 `docs/archive/plan-packaging-final.md`로 비활성화
 - **근거**: claude-hud (2026-04-21 설치 경험) + OMC 사례로 플러그인 API 성숙도 확인. 2026-04-09에 유일하게 막혔던 "API 미성숙" 우려 해소
-- **배포 제외 항목**: `commands/hardcarry.md`, `commands/softcarry.md`, `dongchan-style/` — 유저 개인용. 배포판엔 포함하지 않음
+- **배포 제외 항목**: `commands/hardcarry.md`, `commands/softcarry.md`, 개인 스타일 가이드 디렉토리 — 유저 개인용. 배포판엔 포함하지 않음
 - **다음 액션**: Pre-Plugin 완성도 P0 먼저 (§11 참조)
 
 ---
@@ -400,7 +400,7 @@ executor_py = plugin_root / 'harness' / 'executor.py'
 **배포판에 포함하지 않음** (개인용):
 - `commands/hardcarry.md`
 - `commands/softcarry.md`
-- `dongchan-style/**`
+- 개인 스타일 가이드 디렉토리 전체
 - `hooks/agent-boundary.py.bak-hardcarry`, `hooks/agent-gate.py.bak-hardcarry`
 - 모든 `.bak`, `.bak-*` 파일
 
@@ -487,7 +487,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-project.sh"
 |---|---|---|
 | 4.1 | 현재 `~/.claude/agents/*.md` 13개의 공통/특화 섹션 검토 | 감사 리포트 |
 | 4.2 | `scripts/setup-project.sh` — `.claude/agent-config/` 템플릿 생성 | 셋업 스크립트 |
-| 4.3 | `hardcarry`, `softcarry`, `dongchan-style` 배포 제외 확인 | 체크리스트 |
+| 4.3 | `hardcarry`, `softcarry`, 개인 스타일 가이드 배포 제외 확인 | 체크리스트 |
 
 ### Epic 5: 스킬/명령 이전
 

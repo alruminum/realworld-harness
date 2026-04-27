@@ -463,7 +463,7 @@ def run_impl(
     ensure_depth_frontmatter(impl_file, issue_num, prefix, state_dir, run_logger, config)
 
     # ── 동일 impl 누적 ESCALATE 검사 → architect SPEC_GAP 자동 호출 ──
-    # jajang 통계: 동일 impl 2회 ESCALATE 사례 다수 (06-app-record-guide-screen,
+    # 실측 통계: 동일 impl 2회 ESCALATE 사례 다수 (예: 06-app-record-guide-screen,
     # 02-server-rewarded-counter). 임계 누적 시 새 attempt 시작 전 impl 보강을 강제.
     _auto_sg_marker = _maybe_auto_spec_gap(
         impl_file, str(issue_num), prefix, state_dir, run_logger, config

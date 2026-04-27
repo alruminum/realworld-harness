@@ -83,7 +83,7 @@
 ### 스킬 18개 (자연어 진입로)
 `/qa /ux /quick /product-plan /ralph /harness /deliver /doc-garden /softcarry /hardcarry /init-project /ux-sync /init /review /simplify /fewer-permission-prompts /security-review` 등.
 
-> **배포 제외**: `/softcarry`, `/hardcarry`, `dongchan-style/` (개인 dongchan 시니어 보조 모드)
+> **배포 제외**: `/softcarry`, `/hardcarry`, 개인 스타일 가이드 디렉토리 (특정 사용자 임시 과제용 개인 스킬 — 일반 배포에 무관)
 
 ### 하네스 코어 11개 모듈 (~/.claude/harness/*.py)
 
@@ -113,7 +113,7 @@
 └── .worktrees/{prefix}/issue-{N}/    # 이슈별 워크트리 (isolation=worktree, 2026-04-27 기본)
 ```
 
-화이트리스트 등록: `~/.claude`, `~/project/jajang`, `~/project/memoryBattle`.
+화이트리스트 등록: 사용자별 등록된 프로젝트 절대 경로 목록 (예: `~/.claude`, `~/project/<your-project>`).
 
 ---
 
@@ -171,7 +171,7 @@
 
 ### 필수
 - [ ] `.bak` 11개 삭제 (`harness/*.sh.bak`)
-- [ ] 개인용 제거: `dongchan-style/`, `commands/{hardcarry,softcarry}.md`, `projects/-Users-...-HardcarryDryRun/`
+- [ ] 개인용 제거: 개인 스타일 가이드 디렉토리, `commands/{hardcarry,softcarry}.md`, 임시 과제용 프로젝트 메모리
 - [ ] 하드코딩 경로(`Path.home()`) → `${CLAUDE_PLUGIN_ROOT}` 추상화 (~58곳, 활성 코드 ~15곳)
 - [ ] LICENSE 추가 (MIT)
 - [ ] CHANGELOG v1.0.0 초기화

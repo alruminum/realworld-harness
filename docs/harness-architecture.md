@@ -1,13 +1,9 @@
-# Harness Architecture (TRD 대체) — RealWorld Harness
+# Harness Architecture (TRD 대체)
 
 > `harness-spec.md`의 불변식·게이트를 구현하는 훅·코어·상태·경계 정책 정의.
 > 시스템 동작 추적은 본 문서로, 의도·목적은 spec 문서로 분리.
->
-> **본 문서는 `~/.claude/docs/harness-architecture.md` 에서 마이그레이션됐다.** 본문은 source 그대로 보존하고, RWHarness 컨텍스트(플러그인 배포)에 맞춰 점진적으로 갱신될 예정이다. **Phase 1에 경로 추상화(`Path.home()` → `${CLAUDE_PLUGIN_ROOT}`) 반영 예정** (architect/engineer 위임).
 
-마이그레이션: 2026-04-27
-원본 source: `~/.claude/docs/harness-architecture.md` @ main `2c231c3`
-다음 갱신: Phase 1 — 경로 추상화 + `hooks/hooks.json` (settings.json 훅 → 플러그인 내장)
+작성: 2026-04-27 / 최근 갱신: 경로 추상화 + `hooks/hooks.json` (`HARNESS-CHG-20260427-02`)
 
 ---
 
@@ -56,7 +52,7 @@
 | `HARNESS_FORCE_ENABLE=1` env | 화이트리스트 무관 활성화 | `harness_common.is_harness_enabled()` |
 | 프로젝트가 화이트리스트 미등록 | 모든 훅 조기 종료 (sys.exit(0)) | 동상 |
 | `is_infra_project()` True | 인프라 파일 경계 해제 | `agent-boundary.py:29-56` |
-| `.no-harness` 마커 / `softcarry` 프로젝트명 / `HardcarryDryRun` | bypass | `agent-boundary.py`, `agent-gate.py` |
+| `.no-harness` 마커 파일 (프로젝트 루트) | bypass | `agent-boundary.py` |
 | `CLAUDE_ALLOW_PLUGIN_EDIT=1` | 플러그인 디렉토리 Edit 일시 허용 | `plugin-write-guard.py` |
 
 ---
@@ -180,12 +176,13 @@ HARNESS_INFRA_PATTERNS = [
 ```json
 {
   "projects": [
-    "/Users/dc.kim/.claude",
-    "/Users/dc.kim/project/jajang",
-    "/Users/dc.kim/project/memoryBattle"
+    "/Users/<your-name>/project/<example-project-1>",
+    "/Users/<your-name>/project/<example-project-2>"
   ]
 }
 ```
+
+각 프로젝트는 절대 경로로 등록. 사용자가 `setup-project.sh` 실행 시 자동 추가된다.
 
 ### 5.2 활성화 판정 (`harness_common.is_harness_enabled`)
 

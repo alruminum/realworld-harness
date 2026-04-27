@@ -9,7 +9,7 @@
 ## 1. 마이그레이션 원칙
 
 1. **~/.claude는 작동 상태 유지** — RWHarness로 *복사*만 하고 ~/.claude는 건드리지 않는다.
-2. **선택적 복사** — `.bak` / 개인용(`softcarry`, `hardcarry`, `dongchan-style`) 제외.
+2. **선택적 복사** — `.bak` / 개인용(`softcarry`, `hardcarry`, 개인 스타일 가이드 디렉토리) 제외.
 3. **경로 추상화** — `Path.home()` → `Path(os.environ.get('CLAUDE_PLUGIN_ROOT', Path.home() / '.claude'))` 폴백.
 4. **`settings.json` hooks → `hooks/hooks.json`** — 플러그인 내장형 전환.
 5. **본문 보존, 헤더만 갱신** — 에이전트/오케스트레이션 .md 본문은 그대로. 헤더에 RWHarness 컨텍스트 명시.
@@ -88,7 +88,7 @@
 
 `init-project.md`, `quick.md`, `qa.md`, `ux.md`, `ux-sync.md`, `product-plan.md`, `ralph.md`, `deliver.md`, `doc-garden.md`, `harness-test.md`, `harness-review.md`, `harness-status.md`, `harness-monitor.md`, `harness-kill.md`
 
-**제외**: `hardcarry.md`, `softcarry.md` (개인용 dongchan 보조 모드)
+**제외**: `hardcarry.md`, `softcarry.md` (개인 임시 과제 보조 스킬)
 
 ### 3.5 orchestration/
 

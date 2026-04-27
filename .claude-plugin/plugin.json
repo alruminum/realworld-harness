@@ -3,7 +3,7 @@
   "version": "0.1.0-alpha",
   "description": "Production-grade Agent Workflow Engine for Claude Code — 5-phase deterministic orchestration of role-specialized agents (PM, UX, architect, engineer, QA, reviewer).",
   "author": {
-    "name": "dongchan kim",
+    "name": "alruminum",
     "email": "alruminum@gmail.com"
   },
   "license": "MIT",
