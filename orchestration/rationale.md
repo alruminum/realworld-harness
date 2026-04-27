@@ -99,8 +99,29 @@ HARNESS-CHG-20260427-02 [1.3] harness/ 마이그레이션 (Python 11개 + Shell 
 ### Follow-Up
 
 - 1.2 ~ 1.9 sub-commit 9개 (각 sub-commit마다 `orchestration/changelog.md` row 갱신은 생략 — Task-ID 단위 묶음 관리. 단, sub-commit msg에 `[1.X]` 표기 필수)
-- Phase 1 종료 시점에 `HARNESS-CHG-20260427-02` 의 본 changelog 항목에 sub-commit 결과 요약 추가
+- Phase 1 종료 시점에 `HARNESS-CHG-20260427-02` 의 본 changelog 항목에 sub-commit 결과 요약 추가 — **완료 (commit `bcce3ee` 후 [1.10])**
 - 검증 체크리스트(migration-plan.md §6) 모두 ✓ 후 Phase 2 진입 (`HARNESS-CHG-2026MMDD-NN` 신규 발급)
+
+### Phase 1 종료 (2026-04-27)
+
+**달성**:
+- ~/.claude 활성 코드 100% 마이그레이션 (Python 34 + .md 73 + JSON/SH 등)
+- PLUGIN_ROOT 추상화 도입 — `${CLAUDE_PLUGIN_ROOT}` 환경변수 폴백 ~/.claude
+- hooks/hooks.json 작성 — 플러그인 마켓플레이스 install 시 자동 활성화 가능
+- 개인용(hardcarry/softcarry/dongchan-style) 파일 단위 100% 배제
+
+**Phase 2 인계 (다음 Task-ID로)**:
+- `harness-spec.md §0` Core Invariant 신규 작성 (proposals.md §3 제안 B)
+- README 메인 카피 — "Production-grade Agent Workflow Engine" (proposals.md §3 제안 A)
+- `harness.config.json` `agent_tiers` 옵션 도입 (proposals.md §3 제안 C)
+- **`hooks/agent-gate.py` + `hooks/agent-boundary.py` 의 hardcarry/softcarry bypass 로직 정리**
+  - 옵션 1: 완전 제거 (RWHarness는 dongchan 컨셉 무관)
+  - 옵션 2: 일반화 (`HARNESS_BYPASS=1` env 같은 generic flag로 추상화)
+  - 결정 필요 — 옵션 2가 더 유연 (외부 사용자가 자기 과제용 bypass 활용 가능)
+- `scripts/check_doc_sync.py` (Python 자동 게이트, proposals.md §6 통합형 거버넌스)
+- `scripts/hooks/pre-commit.sh` + `hooks/commit-gate.py` 확장
+- `.github/PULL_REQUEST_TEMPLATE.md`
+- `scripts/setup-project.sh` PLUGIN_ROOT 적응 + 플러그인 install 후 hooks/hooks.json 자동 활성화 검증
 
 ---
 

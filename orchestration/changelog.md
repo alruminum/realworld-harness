@@ -50,15 +50,26 @@
 
 **Summary**: Phase 1(코어 마이그레이션)의 sub-section 9개 분할 + ~/.claude 활성 코드 카탈로그 + 경로 추상화 패턴 + 검증 체크리스트 정의. 본 Task-ID 산하의 sub-commit으로 1.2~1.9 진행 예정.
 
-**Sub-commits 예정**:
-- 1.2 hooks/ 마이그레이션 (Python 훅 22개 + 공유 유틸 4개)
-- 1.3 harness/ 마이그레이션 (Python 11개 + Shell 8개)
-- 1.4 agents/ 마이그레이션 (13개 + architect 하위 6개)
-- 1.5 commands/ 마이그레이션 (14개, hardcarry/softcarry 제외)
-- 1.6 orchestration/ 마이그레이션 (`orchestration/upstream/` 으로 분리)
-- 1.7 경로 추상화 일괄 적용
-- 1.8 `hooks/hooks.json` 작성
-- 1.9 `templates/`, `scripts/` 마이그레이션
+**Sub-commits (완료)**:
+- `[1.1]` 마이그레이션 계획 (commit `348d7b5`)
+- `[1.2]` hooks/ Python 23개 (commit `ad62ac7`, +4024 lines)
+- `[1.3]` harness/ Python 11개 (commit `97a860e`, +6773 lines — impl_loop 85KB 포함)
+- `[1.4]` agents/ .md 26개 (commit `c97fa3b`, +4642 lines)
+- `[1.5]` commands/ .md 16개 (commit `8986e0d`, +1855 lines, hardcarry/softcarry 제외)
+- `[1.6]` orchestration/upstream/ .md 15개 (commit `147b33b`, +1924 lines)
+- `[1.7]` 경로 추상화 PLUGIN_ROOT 도입 5 파일 9곳 (commit `e8c4cee`)
+- `[1.8]` hooks/hooks.json 25 엔트리 (commit `7ca05f5`)
+- `[1.9]` templates/, scripts/ 4 파일 (commit `bcce3ee`)
+- `[1.10]` Phase 1 종료 정리 (본 commit)
+
+**Phase 1 검증 결과** (migration-plan.md §6):
+- ✓ hooks/ 23 / harness/ 11 / agents/ 26 / commands/ 16 / orchestration/upstream/ 15 / templates/ 1 / scripts/ 3
+- ✓ hooks/hooks.json 존재 + 25 엔트리 + json 파싱 통과
+- ✓ PLUGIN_ROOT 정의 5 파일 (harness: core, executor, review_agent / hooks: harness-router, harness-review-trigger)
+- ✓ Path.home() / ".claude" / {hooks,agents,harness,scripts} 잔존 0건
+- ✓ python3 -m py_compile 5 파일 통과
+- ✓ .bak / .bak-* 잔존 0건
+- ⚠️ hooks/agent-gate.py + hooks/agent-boundary.py 에 hardcarry/softcarry bypass 주석·로직 잔존 → **Phase 2 정리 대상** (코드 자체에 텍스트로 박혀있어 단순 grep으론 제거 불가, 일반화 또는 제거 결정 필요)
 
 **Linked**:
 - `docs/proposals.md §4` Phase 1

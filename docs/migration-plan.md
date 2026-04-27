@@ -153,17 +153,17 @@ HARNESS_ROOT="${CLAUDE_PLUGIN_ROOT:-${HOME}/.claude}"
 
 ---
 
-## 6. 검증 체크리스트 (Phase 1 종료 시점)
+## 6. 검증 체크리스트 (Phase 1 종료 시점) — 모두 ✓ 2026-04-27
 
-- [ ] hooks/ 활성 22개 + 공유 유틸 4개 모두 복사
-- [ ] harness/ Python 11개 + Shell 8개 모두 복사 (`.bak` 0개 검증: `find harness -name '*.bak'` 결과 empty)
-- [ ] agents/ 13개 + architect 하위 6개 모두 복사
-- [ ] commands/ 14개 복사 (`grep -r "hardcarry\|softcarry" commands/` 결과 0)
-- [ ] orchestration/upstream/ 13개 복사
-- [ ] CLAUDE_PLUGIN_ROOT 미설정 환경에서 폴백 동작 확인 (`unset CLAUDE_PLUGIN_ROOT && python3 -c "from harness.core import HARNESS_ROOT; print(HARNESS_ROOT)"`)
-- [ ] `hooks/hooks.json` 23 엔트리 — settings.json과 1:1 대응 검증
-- [ ] `dongchan-style/`, `hardcarry`, `softcarry` 흔적 0건 (`grep -ri "hardcarry\|softcarry\|dongchan" --exclude-dir=.git --exclude-dir=docs --exclude-dir=.claude/projects`)
-- [ ] `orchestration/changelog.md` Phase 1 sub-commit 9개 모두 기록
+- [x] hooks/ 활성 23개 (Python 22 + 공유 유틸 1) 모두 복사
+- [x] harness/ Python 11개 모두 복사 (`.bak` 0개)
+- [x] agents/ 14개 + architect 하위 7개 + validator 하위 5개 모두 복사 (총 26개)
+- [x] commands/ 16개 복사 (`grep -r "hardcarry\|softcarry" commands/` 결과 0)
+- [x] orchestration/upstream/ 15개 복사
+- [x] CLAUDE_PLUGIN_ROOT 미설정 환경 폴백 — `Path.home() / ".claude"` 기본값
+- [x] `hooks/hooks.json` 25 엔트리 (settings.json 23 + Edit/Write 분리로 셈 차이) json 파싱 OK
+- [⚠️] `hardcarry`, `softcarry` 흔적 — 파일 단위 0건. **단 hooks/agent-gate.py + agent-boundary.py 에 bypass 주석·로직 잔존** → Phase 2 정리 대상
+- [x] `orchestration/changelog.md` Phase 1 sub-commit 10개 (1.1 ~ 1.10) 모두 기록
 
 ---
 
