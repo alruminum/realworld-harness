@@ -16,6 +16,10 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from harness_common import get_state_dir, get_flags_dir, FLAGS, is_harness_enabled
+from pathlib import Path
+
+# Plugin root resolution — CLAUDE_PLUGIN_ROOT env에 폴백 ~/.claude.
+PLUGIN_ROOT = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or str(Path.home() / ".claude"))
 
 LOG_FILE = "/tmp/harness-router.log"
 
@@ -234,7 +238,7 @@ def _main_inner():
 
     # executor 경로
     local_executor = os.path.join(os.getcwd(), ".claude", "harness/executor.py")
-    global_executor = os.path.expanduser("~/.claude/harness/executor.py")
+    global_executor = str(PLUGIN_ROOT / "harness" / "executor.py")
     executor_path = local_executor if os.path.exists(local_executor) else global_executor
 
     # 현재 플래그 상태

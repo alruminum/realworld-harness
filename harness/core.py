@@ -21,6 +21,11 @@ try:
 except ImportError:
     from config import HarnessConfig, load_config
 
+# Plugin root resolution — CLAUDE_PLUGIN_ROOT env에 폴백 ~/.claude.
+# 플러그인 마켓플레이스 설치 시 CLAUDE_PLUGIN_ROOT 가 자동 set됨.
+# 개발 환경(직접 ~/.claude 사용) 시 폴백.
+PLUGIN_ROOT = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or str(Path.home() / ".claude"))
+
 # ═══════════════════════════════════════════════════════════════════════
 # 1. StateDir — 상태 파일 관리 (init_state_dir + flag_touch/rm/exists)
 # ═══════════════════════════════════════════════════════════════════════
@@ -40,7 +45,7 @@ class StateDir:
         _session_id = os.environ.get("HARNESS_SESSION_ID", "")
         if _session_id:
             try:
-                _hooks_dir = Path.home() / ".claude" / "hooks"
+                _hooks_dir = PLUGIN_ROOT / "hooks"
                 if str(_hooks_dir) not in sys.path:
                     sys.path.insert(0, str(_hooks_dir))
                 import session_state as _ss  # type: ignore
@@ -679,8 +684,8 @@ class RunLogger:
         print()
 
         # 완료 후 자동 리뷰 트리거 (백그라운드)
-        review_agent_py = Path.home() / ".claude" / "harness" / "review_agent.py"
-        review_agent_sh = Path.home() / ".claude" / "harness" / "review-agent.sh"
+        review_agent_py = PLUGIN_ROOT / "harness" / "review_agent.py"
+        review_agent_sh = PLUGIN_ROOT / "harness" / "review-agent.sh"
         if review_agent_py.exists():
             subprocess.Popen(
                 ["python3", str(review_agent_py), str(self.log_file), self.prefix],
@@ -834,7 +839,7 @@ def agent_call(
     # session_id는 executor가 부팅 시 HARNESS_SESSION_ID env var로 주입.
     _session_id_for_agent = ""
     try:
-        _hooks_dir = Path.home() / ".claude" / "hooks"
+        _hooks_dir = PLUGIN_ROOT / "hooks"
         if str(_hooks_dir) not in sys.path:
             sys.path.insert(0, str(_hooks_dir))
         import session_state as _ss
@@ -849,7 +854,7 @@ def agent_call(
         _ss = None  # type: ignore
 
     # 공통 프리앰블 주입
-    preamble_file = Path.home() / ".claude" / "agents" / "preamble.md"
+    preamble_file = PLUGIN_ROOT / "agents" / "preamble.md"
     preamble = ""
     if preamble_file.exists():
         preamble = preamble_file.read_text(encoding="utf-8")
@@ -2087,7 +2092,7 @@ def kill_check(state_dir: StateDir) -> None:
     killed = False
     # Phase 3: global signal
     try:
-        _hooks_dir = Path.home() / ".claude" / "hooks"
+        _hooks_dir = PLUGIN_ROOT / "hooks"
         if str(_hooks_dir) not in sys.path:
             sys.path.insert(0, str(_hooks_dir))
         import session_state as _ss  # type: ignore

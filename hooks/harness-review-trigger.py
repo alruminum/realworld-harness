@@ -14,11 +14,15 @@ from harness_common import is_harness_enabled
 import os
 import json
 import glob
+from pathlib import Path
+
+# Plugin root resolution — CLAUDE_PLUGIN_ROOT env에 폴백 ~/.claude.
+PLUGIN_ROOT = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or str(Path.home() / ".claude"))
 
 MARKERS = ("HARNESS_DONE", "IMPLEMENTATION_ESCALATE", "HARNESS_CRASH", "KNOWN_ISSUE",
            "PLAN_VALIDATION_PASS", "PLAN_VALIDATION_ESCALATE")
 
-REVIEW_SCRIPT = os.path.expanduser("~/.claude/scripts/harness-review.py")
+REVIEW_SCRIPT = str(PLUGIN_ROOT / "scripts" / "harness-review.py")
 
 
 def _cwd_to_proj_hash(cwd):

@@ -12,6 +12,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Plugin root resolution — CLAUDE_PLUGIN_ROOT env에 폴백 ~/.claude.
+PLUGIN_ROOT = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or str(Path.home() / ".claude"))
+
 
 def run_review(run_log_path: str, prefix: str = "") -> None:
     """review-agent.sh의 전체 흐름 대체."""
@@ -36,7 +39,7 @@ def run_review(run_log_path: str, prefix: str = "") -> None:
 
     # ── harness-review.py 실행 ──
     waste_analysis = ""
-    review_script = Path.home() / ".claude" / "scripts" / "harness-review.py"
+    review_script = PLUGIN_ROOT / "scripts" / "harness-review.py"
     review_txt = log_path.with_suffix(".txt").parent / (log_path.stem + "_review.txt")
     if review_script.exists():
         try:

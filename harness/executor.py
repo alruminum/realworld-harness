@@ -16,6 +16,9 @@ import threading
 import time
 from pathlib import Path
 
+# Plugin root resolution — CLAUDE_PLUGIN_ROOT env에 폴백 ~/.claude.
+PLUGIN_ROOT = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or str(Path.home() / ".claude"))
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="하네스 워크플로우 라우터")
@@ -55,7 +58,7 @@ def main() -> None:
     issue_num = getattr(args, "issue_num", "") or ""
 
     # Phase 3: 세션 ID 부팅 — HARNESS_SESSION_ID env → .session-id 파일
-    sys.path.insert(0, str(Path.home() / ".claude" / "hooks"))
+    sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
     try:
         import session_state as ss  # type: ignore
     except ImportError:
