@@ -82,14 +82,24 @@ except Exception:
   fi
 fi
 
-# .gitignore에 .worktrees/ 자동 등록 (git repo이고 미등록일 때만)
-if [ -d .git ] && [ ! -f .gitignore ]; then
-  echo ".worktrees/" > .gitignore
-  echo "📄 .gitignore 생성 (.worktrees/ 등록)"
-elif [ -d .git ] && [ -f .gitignore ] && ! grep -qE "^\.worktrees/?$" .gitignore; then
-  echo "" >> .gitignore
-  echo ".worktrees/" >> .gitignore
-  echo "📄 .gitignore에 .worktrees/ 추가"
+# .gitignore 자동 등록 (git repo 이고 미등록일 때만)
+# .worktrees/             — 이슈별 worktree 격리 디렉토리
+# .claude/harness-state/  — 세션·플래그·디버그 로그 (절대 commit 금지)
+_GITIGNORE_ENTRIES=(".worktrees/" ".claude/harness-state/")
+
+if [ -d .git ]; then
+  if [ ! -f .gitignore ]; then
+    printf '%s\n' "${_GITIGNORE_ENTRIES[@]}" > .gitignore
+    echo "📄 .gitignore 생성 (.worktrees/ + .claude/harness-state/ 등록)"
+  else
+    for _entry in "${_GITIGNORE_ENTRIES[@]}"; do
+      _pattern="^$(echo "$_entry" | sed 's|/|\\/|g')\\?$"
+      if ! grep -qE "$_pattern" .gitignore; then
+        echo "$_entry" >> .gitignore
+        echo "📄 .gitignore에 $_entry 추가"
+      fi
+    done
+  fi
 fi
 
 # 기존 settings.json 에서 allowedTools 보존
