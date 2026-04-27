@@ -8,6 +8,7 @@
 | `HARNESS-CHG-20260427-02` | 2026-04-27 | spec | Phase 1 마이그레이션 계획 + ~/.claude 활성 코드 인벤토리 | — |
 | `HARNESS-CHG-20260427-03` | 2026-04-27 | spec | Phase 2 — Core Invariant + agent_tiers + 거버넌스 자동 게이트 + bypass 제거 | — |
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | spec | Phase 3 [3.1] 독립 정본화 — 마이그레이션 흔적 + 개인 식별자 + 추상어 정리 | — |
+| `HARNESS-CHG-20260427-04` | 2026-04-27 | docs | Phase 3 [3.2] orchestration/upstream/README.md 추가 — 참조 스냅샷 정체성 명시 | — |
 
 ---
 
