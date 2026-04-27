@@ -26,6 +26,8 @@
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | docs | Phase 4 [4.4] git tag `v0.1.0-alpha` push (메타) | — |
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | infra | Phase 4 [4.5] GitHub Release v0.1.0-alpha 생성 (private, 메타) | — |
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | infra | Phase 4 [4.6] rename — `setup-project.sh` → `setup-rwh.sh` + `/init-project` → `/init-rwh` (12 파일 일괄 치환) | — |
+| `HARNESS-CHG-20260427-05` | 2026-04-27 | infra | Phase 4 [4.7] repo public 전환 — gh repo edit (메타) | — |
+| `HARNESS-CHG-20260427-05` | 2026-04-27 | docs | Phase 4 [4.8] Phase 4 ✅ 완료 정리 — README badge + Phase 표 + 설치 섹션 final | — |
 
 ---
 
