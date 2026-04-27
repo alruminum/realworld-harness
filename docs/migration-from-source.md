@@ -8,13 +8,26 @@
 
 ## ⚠️ 사전 주의
 
-- **별도 새 Claude Code 세션** 에서 진행한다. 현재 세션이 ~/.claude 훅에 의존 중이면 정리 작업이 자기 발판을 부순다.
+- **새 Claude Code 세션을 열어도 ~/.claude 환경은 동일** — 새 세션 = 깨끗한 컨텍스트지만 settings.json + hooks/* 는 모든 세션이 공유. 단순히 새 세션 만으로는 정리 불가.
+- 진짜 안전한 흐름: **Claude Code 자체 종료(quit) → 터미널에서 백업 + settings 무력화 → Claude 재시작 → 플러그인 install → 재시작 → 나머지 정리**.
+- "터미널" = 일반 셸(Mac Terminal, iTerm 등). "Claude 세션" = `/plugin` 명령 등 가능한 Claude Code 안.
 - ~/.claude 전체 백업이 1단계. 5분 보호 작업.
 - 활성 화이트리스트 프로젝트(`/harness-list` 로 확인)에서 *진행 중인 작업* 이 있으면 정리 후 시작.
 
 ---
 
-## 1. 백업 (5분, 필수)
+## 1. Claude Code 완전 종료 (필수)
+
+작업 중인 모든 Claude Code 창 저장 후 quit. 메뉴 → Quit Claude Code (Cmd+Q). 백그라운드 프로세스도 종료.
+
+검증 (터미널):
+```bash
+pgrep -fl "Claude Code" || echo "Claude Code 종료됨"
+```
+
+---
+
+## 2. 백업 (5분, 필수, 터미널 작업)
 
 ```bash
 DATE=$(date +%Y%m%d_%H%M)
@@ -26,52 +39,51 @@ echo "백업 위치: ~/.claude.bak.$DATE"
 
 ---
 
-## 2. RWHarness 플러그인 install (3분)
+## 3. settings.json hooks 섹션 무력화 (터미널 작업)
 
-**새** Claude Code 세션에서:
-
-```
-/plugin marketplace add alruminum/realworld-harness
-/plugin install realworld-harness
-```
-
-Claude Code 완전 재시작.
-
-검증:
+source 시스템의 23개 훅이 ~/.claude/settings.json 에 등록돼있음. 다음 Claude Code 시작 시 플러그인과 *중복* 실행 위험. 미리 제거.
 
 ```bash
-echo $CLAUDE_PLUGIN_ROOT
-# 예: /Users/<name>/.claude/plugins/cache/.../realworld-harness/<version>
-```
-
-→ env 가 set 됐으면 플러그인 활성화 성공.
-
----
-
-## 3. ~/.claude/settings.json 의 hooks 섹션 제거 (충돌 회피)
-
-source 시스템이 글로벌 settings.json 에 23개 훅을 등록해뒀음. 플러그인의 `hooks/hooks.json` 이 자동 로드되므로 *중복* 발생. source 측 제거.
-
-```bash
-# 안전 백업
 cp ~/.claude/settings.json ~/.claude/settings.json.bak
 
-# hooks 섹션만 제거
 python3 - <<'PY'
 import json, os
 p = os.path.expanduser('~/.claude/settings.json')
 d = json.load(open(p))
 removed = d.pop('hooks', None)
 json.dump(d, open(p, 'w'), indent=2, ensure_ascii=False)
-print(f"hooks 섹션 제거 완료" if removed else "hooks 섹션 없음 — skip")
+print("hooks 섹션 제거 완료" if removed else "hooks 섹션 없음 — skip")
 PY
 ```
 
+이 시점부터 다음 Claude 세션에서는 ~/.claude/hooks/* 의 훅이 발동 *안 함* → 정리 작업이 자기 발판 부수지 않음.
+
 ---
 
-## 4. ~/.claude 의 source 디렉토리 삭제
+## 4. RWHarness 플러그인 install (Claude Code 재시작 후)
 
-### 삭제 대상 (RWHarness 가 플러그인으로 가져온 부분)
+Claude Code 재시작 → 새 세션 (이때는 ~/.claude 훅 + 플러그인 모두 비활성 상태):
+
+```
+/plugin marketplace add alruminum/realworld-harness
+/plugin install realworld-harness
+```
+
+**Claude Code 다시 한 번 완전 재시작** (플러그인 hooks/hooks.json 활성화). 검증:
+
+```bash
+# 새 Claude 세션의 Bash 도구 또는 일반 터미널에서
+echo $CLAUDE_PLUGIN_ROOT
+# 예: /Users/<name>/.claude/plugins/cache/.../realworld-harness/<version>
+```
+
+→ env 가 set 됐으면 플러그인 활성. 이제 RWHarness 의 23개 훅이 hooks.json 으로 발동.
+
+---
+
+## 5. ~/.claude 의 source 디렉토리 삭제 (터미널 작업)
+
+이 시점에 ~/.claude/hooks 등 source 디렉토리는 *어디서도 참조 안 됨* (settings.json hooks 제거 + 플러그인이 PLUGIN_ROOT 로 작동). 안전 삭제.
 
 ```bash
 rm -rf ~/.claude/hooks
@@ -106,16 +118,16 @@ rm -f ~/.claude/.harness-infra        # 인프라 프로젝트 마커
 
 ---
 
-## 5. 검증 (10분)
+## 6. 검증 (10분)
 
-### 5.1 플러그인 활성 확인
+### 6.1 플러그인 활성 확인
 
 ```bash
 ls "$CLAUDE_PLUGIN_ROOT/hooks/" | wc -l   # 23개 .py 파일
 cat "$CLAUDE_PLUGIN_ROOT/hooks/hooks.json" | python3 -m json.tool | head -5
 ```
 
-### 5.2 화이트리스트 등록된 프로젝트에서 훅 동작 확인
+### 6.2 화이트리스트 등록된 프로젝트에서 훅 동작 확인
 
 ```bash
 cd /path/to/<your-active-project>
@@ -128,13 +140,13 @@ ls .claude/harness-state/ 2>/dev/null
 /harness-list   # 등록된 프로젝트 목록
 ```
 
-### 5.3 quickstart §1 실행 (5분)
+### 6.3 quickstart §1 실행 (5분)
 
 [`docs/e2e-quickstart.md §1`](e2e-quickstart.md) 따라 `/quick` 루프 1건 통과 확인.
 
 ---
 
-## 6. 롤백 (문제 발생 시)
+## 7. 롤백 (문제 발생 시)
 
 ```bash
 # 1) 플러그인 제거
@@ -151,7 +163,7 @@ mv ~/.claude.bak.$DATE ~/.claude
 
 ---
 
-## 7. 정리 완료 (수일 사용 후 문제 없으면)
+## 8. 정리 완료 (수일 사용 후 문제 없으면)
 
 ```bash
 rm -rf ~/.claude.bak.<date>
