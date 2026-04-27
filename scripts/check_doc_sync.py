@@ -40,6 +40,7 @@ INFRA_PATTERNS = [
     re.compile(r"^harness/"),
     re.compile(r"^scripts/"),
     re.compile(r"^\.claude-plugin/"),
+    re.compile(r"^\.github/"),  # CI/CD workflows + 템플릿
 ]
 
 AGENT_PATTERNS = [

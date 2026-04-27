@@ -23,7 +23,7 @@
 | 토큰 | 감시 경로 | 동반 필수 산출물 |
 |---|---|---|
 | `spec` | `docs/harness-spec.md`, `docs/harness-architecture.md`, `docs/proposals.md`, `prd.md`, `trd.md` | `changelog.md` + `rationale.md` (양쪽 필수) |
-| `infra` | `hooks/`, `harness/`, `scripts/`, `.claude-plugin/` | `changelog.md` + 영향 받는 spec 문서 검토 표시 |
+| `infra` | `hooks/`, `harness/`, `scripts/`, `.claude-plugin/`, `.github/` | `changelog.md` + 영향 받는 spec 문서 검토 표시 |
 | `agent` | `agents/*.md`, `agents/**/*.md` | `changelog.md` + 영향 받는 spec 문서 검토 표시 |
 | `docs` | `README.md`, `CHANGELOG.md`, `docs/` (spec/proposals 외), `templates/` | `changelog.md` |
 | `test` | `tests/pytest/`, `tests/bats/` | (산출물 추가 없음) |

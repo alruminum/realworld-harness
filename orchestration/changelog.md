@@ -10,6 +10,7 @@
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | spec | Phase 3 [3.1] 독립 정본화 — 마이그레이션 흔적 + 개인 식별자 + 추상어 정리 | — |
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | docs | Phase 3 [3.2] orchestration/upstream/README.md 추가 — 참조 스냅샷 정체성 명시 | — |
 | `HARNESS-CHG-20260427-04` | 2026-04-27 | spec | Phase 3 [3.3] harness-architecture.md 본문 PLUGIN_ROOT 적응 + 잔존 ~/.claude 정리 | — |
+| `HARNESS-CHG-20260427-04` | 2026-04-27 | infra | Phase 3 [3.4] GitHub Actions Document Sync workflow + Change-Type `.github/` 분류 추가 | — |
 
 ---
 

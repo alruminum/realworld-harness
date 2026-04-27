@@ -1,0 +1,34 @@
+name: Document Sync Gate
+
+# 거버넌스 자동 게이트 — PR 단계.
+# orchestration/policies.md §2~6 룰을 PR base..head diff 에 적용.
+# 누락 산출물 + Document-Exception 없음 → 머지 차단.
+#
+# 우회: PR body 또는 commit msg 에 'Document-Exception: <10자 이상 사유>' 명시.
+# Spec: orchestration/policies.md §6.3, scripts/check_doc_sync.py
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  doc-sync:
+    name: check_doc_sync.py base..head
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run Document Sync Gate
+        run: |
+          python3 scripts/check_doc_sync.py \
+            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.head.sha }}"
