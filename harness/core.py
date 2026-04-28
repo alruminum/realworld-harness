@@ -1357,15 +1357,15 @@ class WorktreeManager:
     def create_or_reuse(self, branch_name: str, issue_num: str) -> Path:
         """worktree 생성 또는 기존 재사용. 반환: worktree 절대 경로."""
         wt_path = self.worktree_path(issue_num)
-        if wt_path.exists():
-            return wt_path
-        r = _git("show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}")
-        if r.returncode == 0:
-            _git("worktree", "add", str(wt_path), branch_name, check=True)
-        else:
-            default = _default_branch()
-            _git("worktree", "add", "-b", branch_name, str(wt_path), default, check=True)
-        self._copy_untracked_plan_files(wt_path)
+        reused = wt_path.exists()
+        if not reused:
+            r = _git("show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}")
+            if r.returncode == 0:
+                _git("worktree", "add", str(wt_path), branch_name, check=True)
+            else:
+                default = _default_branch()
+                _git("worktree", "add", "-b", branch_name, str(wt_path), default, check=True)
+        self._copy_untracked_plan_files(wt_path, reused=reused)
         return wt_path
 
     # plan 파일 패턴 — architect 가 작성하지만 commit 전 worktree 진입하는 흐름
@@ -1374,13 +1374,17 @@ class WorktreeManager:
     # 안전 패턴: plan 디렉토리만. src/ 등은 worktree 경계 보호 위해 제외.
     _PLAN_PREFIXES = ("docs/bugfix/", "docs/impl/", "docs/milestones/")
 
-    def _copy_untracked_plan_files(self, wt_path: Path) -> None:
-        """worktree 생성 직후 main repo 의 untracked plan 파일을 worktree 로 복사."""
-        import shutil
-        r = _git("ls-files", "--others", "--exclude-standard")
+    def _copy_untracked_plan_files(self, wt_path: Path, reused: bool = False) -> None:
+        """worktree 진입 시 main repo 의 untracked plan 파일을 worktree 로 복사.
+
+        reused=True 이면 worktree 측에 이미 동일 경로 파일이 존재할 경우 보존 (덮어쓰기 금지).
+        fresh 케이스(reused=False) 는 기존 동작 그대로.
+        """
+        r = _git("ls-files", "--others", "--exclude-standard", cwd=str(self.project_root))
         if r.returncode != 0:
             return
         copied = 0
+        skipped = 0
         for line in r.stdout.splitlines():
             rel = line.strip()
             if not rel or not rel.startswith(self._PLAN_PREFIXES):
@@ -1389,14 +1393,21 @@ class WorktreeManager:
             if not src.is_file():
                 continue
             dst = wt_path / rel
+            if reused and dst.exists():
+                skipped += 1
+                continue
             dst.parent.mkdir(parents=True, exist_ok=True)
             try:
                 shutil.copy2(src, dst)
                 copied += 1
             except OSError:
                 pass
-        if copied:
-            print(f"[HARNESS] worktree 진입: untracked plan 파일 {copied}개 복사 ({wt_path.name})")
+        if copied or skipped:
+            action = "재사용" if reused else "진입"
+            msg = f"[HARNESS] worktree {action}: untracked plan 파일 {copied}개 복사 ({wt_path.name})"
+            if skipped:
+                msg += f", 기존 {skipped}개 보존"
+            print(msg)
 
     def remove(self, issue_num: str) -> None:
         """worktree 정리."""
