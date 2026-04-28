@@ -26,7 +26,7 @@
 | `infra` | `hooks/`, `harness/`, `scripts/`, `.claude-plugin/`, `.github/` | `changelog.md` + 영향 받는 spec 문서 검토 표시 |
 | `agent` | `agents/*.md`, `agents/**/*.md` | `changelog.md` + 영향 받는 spec 문서 검토 표시 |
 | `docs` | `README.md`, `CHANGELOG.md`, `docs/` (spec/proposals 외), `templates/` | `changelog.md` |
-| `test` | `tests/pytest/`, `tests/bats/` | (산출물 추가 없음) |
+| `test` | `tests/pytest/` | (산출물 추가 없음) |
 
 > **분류 충돌 시 우선순위**: `spec` > `infra` > `agent` > `docs` > `test`. 한 PR이 여러 유형을 포함하면 가장 강한 유형의 산출물 요건이 적용된다.
 
