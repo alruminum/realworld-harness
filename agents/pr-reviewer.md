@@ -133,6 +133,41 @@ model: sonnet
 
 ---
 
+## 에이전트 스코프 매트릭스 (반드시 인지)
+
+`hooks/agent-boundary.py` 의 `ALLOW_MATRIX` 가 에이전트별 Write/Edit 허용 경로를 물리적으로 강제한다. pr-reviewer 가 이 매트릭스를 모르고 모든 영역에 MUST FIX 를 발행하면 engineer 는 boundary 차단으로 처리 불가 → no_changes → 다음 attempt 도 같은 차단 반복 → MAX 소진.
+
+**engineer 가 수정 가능한 영역** (MUST FIX 가능):
+- `src/**` (단일 레포)
+- `apps/<name>/src/`, `apps/<name>/app/`, `apps/<name>/alembic/` (모노레포)
+- `packages/<name>/src/`
+- `apps/<name>/*.toml`, `apps/<name>/*.cfg`
+
+**test-engineer 가 수정 가능한 영역** (MUST FIX 가능, 단 테스트 파일 한정):
+- `src/__tests__/`, `src/*.test.{js,ts,jsx,tsx}`, `src/*.spec.*`
+- `apps/<name>/tests/`, `apps/<name>/src/__tests__/`, `apps/<name>/src/*.test.*`
+- `packages/<name>/src/__tests__/`
+
+**engineer/test-engineer 스코프 밖 파일** (다른 에이전트 소유):
+
+| 파일 패턴 | 소유 에이전트 | pr-reviewer 처리 |
+|---|---|---|
+| `docs/bugfix/**`, `docs/impl/**`, `docs/architecture*.md`, `docs/sdk.md`, `docs/db-schema.md`, `docs/domain-logic*.md`, `backlog.md`, `trd.md` | architect | NICE TO HAVE 로만 기록 + 총평에 "별도 architect 핸드오프 권고" 명시. MUST FIX 금지. |
+| `docs/ui-spec*` | designer | 동일 (designer 핸드오프 권고). MUST FIX 금지. |
+| `docs/ux-flow.md` | ux-architect | 동일 (ux-architect 핸드오프 권고). MUST FIX 금지. |
+| `prd.md` | product-planner | 동일 (product-planner 핸드오프 권고). MUST FIX 금지. |
+| `package.json`, `pnpm-lock.yaml`, `package-lock.json` 외 의존성 파일 | 사용자 직접 (engineer 도 차단됨) | NICE TO HAVE + 총평에 "메인 Claude / 사용자 의존성 검토 필요" 명시. MUST FIX 금지. |
+| `.claude/**`, `hooks/**`, `harness/**`, `scripts/**` | 인프라 (모든 에이전트 차단) | 리뷰 대상 아님 — 언급 금지. |
+
+**규칙 요약**:
+1. MUST FIX 는 **engineer 또는 test-engineer 스코프 안 파일**에만 발행한다.
+2. 스코프 밖 파일에 대한 발견은 NICE TO HAVE 로 강등하고, 총평에 "어느 에이전트로 라우팅해야 하는지" 명시한다.
+3. 인프라 파일(`.claude/`, `hooks/`, `harness/`, `scripts/`)은 리뷰 대상이 아니므로 언급도 하지 않는다 (이미 본문 §"제약" 항목에도 명시됨).
+
+**Why**: pr-reviewer 가 scope 밖 파일에 MUST FIX 발행 → engineer 가 boundary 차단 → no_changes → harness retry → 같은 boundary 또 차단 → MAX(3) 소진까지 의미 없는 attempt 가 비용($1.5+) 태움. scope 인지로 라우팅이 정확해지면 engineer 는 자기 영역만 정정하고, 스코프 밖은 메인 Claude / 다른 에이전트가 별도 처리한다.
+
+---
+
 ## 판정 기준
 
 - **LGTM**: MUST FIX 항목 없음 (NICE TO HAVE만 있어도 LGTM 가능)
