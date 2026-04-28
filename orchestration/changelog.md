@@ -46,6 +46,8 @@
 | `HARNESS-CHG-20260428-02` | 2026-04-28 | infra | [2.3] smoke-test.sh §9 tracker LOCAL-N regression 회로 5건 추가 (parse_ref / format/normalize / LocalBackend 라운드트립 / 강제 폴백 / which CLI) — 56/56 PASS | — |
 | `HARNESS-CHG-20260428-03` | 2026-04-28 | infra | [3.1] BATS 잔존 표기 제거 — CHANGELOG 부채 라인 + PR 템플릿 + policies.md §2 `tests/bats/` 표기. 코드/스크립트에 BATS 흔적 0건 확인 (점검 결과) | — |
 | `HARNESS-CHG-20260428-04` | 2026-04-28 | infra | [4.1] `~/.claude/harness/executor.py` hardcode 제거 — 6 파일 13 위치 → `${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/harness/executor.py` (jajang 실제 사례에서 No such file or directory 발생) | — |
+| `HARNESS-CHG-20260428-05` | 2026-04-28 | infra | [5.1] `diagnose_marker_miss()` 헬퍼 + 9 사이트 적용 (impl_router 2 + plan_loop 1 + core 6 validator) — 마커 미감지 시 arch_out 마지막 500자 진단 로그 | — |
+| `HARNESS-CHG-20260428-05` | 2026-04-28 | agent | [5.2] architect sub-docs 출력 형식 canonical — light-plan/module-plan/task-decompose `---MARKER:X---` 정형 마커로 통일 + preamble 자가-체크 룰 추가 | — |
 
 ---
 
@@ -341,6 +343,56 @@
 - 외부 사용자 보고 (2026-04-28): jajang 프로젝트에서 발생
 - Phase 4 [4.13] migrate-step2.sh — 원인이 된 마이그레이션
 - 후속: `HARNESS-CHG-20260428-05` (예정) — architect 마커 미감지 → SPEC_GAP_ESCALATE 진단·수정 (별도 Task-ID)
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-05` — 2026-04-28 — marker 진단 가시성 + agent docs canonical
+
+**Type**: infra (코드 + agent docs)
+
+**Branch**: `harness/marker-diagnostics`
+
+**Issue**: jajang 실제 사례 — architect 가 계획 파일은 정상 작성했으나 `parse_marker → UNKNOWN` → `SPEC_GAP_ESCALATE`. 진단 정보 부족으로 현장 디버그 불가능 (`SPEC_GAP_ESCALATE: architect 마커 감지 실패 (UNKNOWN)` 만 출력).
+
+**원인 가설** (3가지):
+- (a) 에이전트 출력 도중 끊김 — timeout / 컨텍스트 한계
+- (b) 변형 표기 — `LIGHT_PLAN_READY:` 콜론 등 punctuation 으로 word boundary 깨짐
+- (c) 마커 누락 — agent docs 내부 *불일치*: preamble 정형 강제 vs sub-doc 평이 단어 예시
+
+**B-1 — 진단 가시성** (`harness/core.py` + `impl_router.py` + `plan_loop.py`):
+- 신규 `diagnose_marker_miss(out_file, expected) -> str` 헬퍼 (core.py:497~)
+- 9 사이트 적용 — 마커 미감지 시 출력 파일 크기 + 마지막 500자 즉시 출력
+  * `impl_router.py:415` (architect SPEC_GAP_ESCALATE)
+  * `impl_router.py:432` (architect impl 파일 미생성)
+  * `plan_loop.py:334` (ux-architect 마커 미감지)
+  * `core.py:2174` (PLAN_VALIDATION UNKNOWN)
+  * `core.py:2225` (PLAN_VALIDATION rework UNKNOWN)
+  * `core.py:2260` (DESIGN_VALIDATION UNKNOWN)
+  * `core.py:2294` (DESIGN_VALIDATION rework UNKNOWN)
+  * `core.py:2329` (UX_VALIDATION UNKNOWN)
+  * `core.py:2364` (UX_VALIDATION rework UNKNOWN)
+
+**B-2 — agent docs canonical**:
+- `agents/architect/light-plan.md` 출력 형식 — 평이 단어 `LIGHT_PLAN_READY` → `---MARKER:LIGHT_PLAN_READY---` 마지막 줄
+- `agents/architect/module-plan.md` 출력 형식 — `READY_FOR_IMPL 체크:` 헤딩 → `최종 체크:` (false positive 방지) + `---MARKER:READY_FOR_IMPL---` 마지막 줄
+- `agents/architect/task-decompose.md` 출력 형식 — 마커 누락 → `---MARKER:READY_FOR_IMPL---` 추가
+- `agents/preamble.md` § "출력 종료 자가-체크" 신규 — 마커 누락이 무진단 실패의 80% 원인임을 명시
+
+**검증**:
+- python3 -m py_compile harness/{core,impl_router,plan_loop}.py — OK
+- bash scripts/smoke-test.sh — 56/56 PASS (회귀 없음)
+- python3 -m unittest tests.pytest.test_tracker — 33/33 OK
+
+**비변경 (의도)**:
+- `parse_marker` 자체 — 정형 + word-boundary fallback 보존. 관용도 ↑ 시도는 false positive 위험으로 스킵
+- `impl_loop.py` 의 SPEC_GAP_FOUND 흐름 — 마커 *감지 케이스* 라 진단 불필요
+
+**Linked**:
+- jajang 사용자 사례 (2026-04-28) — `executor.py` 두 번째 시도 후 SPEC_GAP_ESCALATE
+- `HARNESS-CHG-20260428-04` (PR #4) — 같은 사례의 첫 단계 (path hardcode) 해소
+- 후속: `HARNESS-CHG-20260428-06` (예정) — 프로세스 hung/crashed 복구 가시성 (B-3)
 
 **Exception**: —
 

@@ -126,10 +126,12 @@ UI 컴포넌트(*.tsx 화면·뷰)를 만드는 impl 파일이고 **`docs/ux-flo
 
 ### 출력 형식
 
+마커는 **출력 마지막 줄에 정형(`---MARKER:READY_FOR_IMPL---`)** 으로 둔다. 본문 헤딩(예: `READY_FOR_IMPL 체크:`) 은 `parse_marker` fallback 의 false positive 를 만들 수 있어 일반 단어로 교체했다.
+
 ```
 계획 파일 완료: [파일 경로]
 
-READY_FOR_IMPL 체크:
+최종 체크:
 - [✓/✗] 생성 파일 목록
 - [✓/✗] 타입 명시
 - [✓/✗] 의존 모듈 실제 확인
@@ -142,6 +144,8 @@ READY_FOR_IMPL 체크:
 - [✓/✗] 테스트 파일 경로 명시 ((TEST) 태그 대응)
 
 → engineer 에이전트 호출 가능 / [미통과 항목] 보강 후 재보고
+
+---MARKER:READY_FOR_IMPL---
 ```
 
 ### CLAUDE.md 모듈 표 업데이트
