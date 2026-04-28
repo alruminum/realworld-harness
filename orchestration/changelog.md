@@ -52,6 +52,7 @@
 | `HARNESS-CHG-20260428-06` | 2026-04-28 | infra | [6.2] executor.py stale lock 자동 정리 visibility — silent unlink → 명시적 메시지 ("직전 실행 PID=X 죽음, 재진행합니다") | — |
 | `HARNESS-CHG-20260428-07` | 2026-04-28 | infra | [7.1] migration audit — `~/.claude/scripts/`, `~/.claude/setup-harness.sh`, `~/.claude/agents/{agent}.md` 잔존 hardcode 5 파일 9 위치 일괄 env-aware 교체 (PR #4 systematic 후속) | `Document-Exception: harness-architecture.md 단일 행 path 정정 — 의사결정 변경 없는 문구 fix 라 rationale 4섹션 불필요. 본 Task-ID 본문 섹션이 동기·범위 명시` |
 | `HARNESS-CHG-20260428-08` | 2026-04-28 | agent | [8.1] validator sub-docs canonical 마커 — plan/code/design/bugfix-validation 출력 형식 `---MARKER:X---` 정형화 + preamble 마커명 정확도 절대 룰 추가 (PLAN_LGTM 변형 차단) | — |
+| `HARNESS-CHG-20260428-09` | 2026-04-28 | infra | [9.1] parse_marker alias map — LLM 변형(PLAN_LGTM/PLAN_OK/PLAN_APPROVE/APPROVE/REJECT 등) → canonical 흡수. 3차 폴백 + stderr 경고. agent docs 강화로 안 풀린 PLAN_OK/APPROVE 사례(jajang 2026-04-28) defense in depth | — |
 
 ---
 
@@ -541,6 +542,54 @@ RWHarness commands/harness-review.md:21 → ~/.claude/scripts/harness-review.py 
 - jajang 사용자 사례 (2026-04-28): validator PLAN_LGTM emit
 - 업스트림 검증: `gh api repos/alruminum/ClaudeCodeAgentPrompt` — 업스트림에도 같은 fragility 존재
 - `HARNESS-CHG-20260428-05` (PR #5) — architect canonical 마커. 본 PR 은 validator 영역 동일 패턴
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-09` — 2026-04-28 — parse_marker alias map (LLM 변형 흡수)
+
+**Type**: infra (harness/core.py + tests)
+
+**Branch**: `harness/marker-alias-map`
+
+**Issue**: PR #8 의 canonical 마커 + preamble 절대 룰이 *이미 적용된 상태* (jajang 의 plugin cache 가 RWHarness main 으로 symlink — dev 모드, 변경 즉시 live) 에서도 validator 가 `PLAN_OK` / `APPROVE` 변형 emit → `parse_marker → UNKNOWN` → `PLAN_VALIDATION_ESCALATE` 또 발생.
+
+**근본 원인**: agent docs 강화는 *주 방어선* 이지만 LLM 이 룰 따르지 않는 사례 존재. agent docs 만 의지하는 건 fragile — *defense in depth* 필요.
+
+**[9.1] alias map**:
+- `harness/core.py:523-580` — `MARKER_ALIASES` dict 신규
+  - 변형 키 → canonical 값 (호출자 expected set 안 일 때만 normalize)
+  - PLAN_LGTM / PLAN_OK / PLAN_APPROVE / PLAN_APPROVED → PLAN_VALIDATION_PASS
+  - PLAN_REJECT / PLAN_REJECTED / PLAN_NOT_APPROVED → PLAN_VALIDATION_FAIL
+  - DESIGN_LGTM / DESIGN_OK / DESIGN_APPROVE → DESIGN_REVIEW_PASS
+  - DESIGN_REJECT / DESIGN_REJECTED → DESIGN_REVIEW_FAIL
+  - BUGFIX_LGTM / BUGFIX_OK / BUGFIX_APPROVE → BUGFIX_PASS
+  - UX_LGTM / UX_OK / UX_APPROVE → UX_REVIEW_PASS, UX_REJECT → UX_REVIEW_FAIL
+  - CODE_LGTM / CODE_OK / CODE_APPROVE → PASS
+  - 일반: APPROVE/APPROVED/OK → PASS, REJECT/REJECTED/NOT_APPROVED → FAIL
+
+- `parse_marker` 3차 폴백 로직 추가:
+  1차 `---MARKER:X---` (canonical 정형) → 매치 시 그대로
+  2차 `\bX\b` (canonical 워드 바운더리) → 매치 시 그대로
+  3차 alias map 의 변형이 ---MARKER 또는 워드 바운더리로 출현 + 그 canonical 이 호출자 expected set 안 → normalize 해서 반환 + stderr 경고
+
+- stderr 경고: "alias hit — 'PLAN_OK' → 'PLAN_VALIDATION_PASS' (agent docs canonical 룰 강화 권장)" — 발생 시 agent docs 보강 시그널
+
+**보존 (false positive 차단)**:
+- LGTM 단독 매핑 안 함 — pr-reviewer 의 정식 마커이기도 해서 충돌
+- alias 는 호출자가 *해당 canonical 을 expected set 에 포함* 시킬 때만 적용. 다른 컨텍스트의 alias 차용 차단
+- canonical 이 같은 파일에 있으면 1차/2차 우선 (alias 는 마지막 폴백)
+
+**검증**:
+- `tests/pytest/test_tracker.py` ParseMarkerAliasTests 11 케이스 신규
+  - canonical 우선 / alias 정상 normalize / 다른 컨텍스트 거부 / unknown 보존
+- 33→44 케이스. 100% 통과.
+- bash scripts/smoke-test.sh — 56/56 (회귀 없음)
+
+**Linked**:
+- jajang 사례 (2026-04-28) `PLAN_OK / APPROVE` 변형 emit
+- `HARNESS-CHG-20260428-08` (PR #8) — agent docs canonical 룰. *주 방어선*. 본 PR 은 *defense in depth* 보완
 
 **Exception**: —
 

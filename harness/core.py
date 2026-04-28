@@ -520,6 +520,55 @@ def diagnose_marker_miss(out_file: str | Path, expected: str) -> str:
             f"[DIAG] 마지막 {tail_n}자:\n---\n{tail}\n---")
 
 
+# ── Marker alias map — LLM 변형 흡수 (defense in depth) ──
+#
+# 에이전트 docs 가 canonical 마커를 강제해도 LLM 이 변형을 emit 하는 사례 존재
+# (실측: jajang 2026-04-28 — validator 가 PLAN_LGTM / PLAN_OK / APPROVE 변형 emit).
+# agent docs 강화는 *주 방어선*, alias map 은 *defense in depth* — agent docs 가
+# 약화·LLM rebellion 발생해도 워크플로우 정지 안 되도록.
+#
+# 룰: 키 = 변형 (LLM emit 가능), 값 = canonical (parse_marker 호출자가 기대)
+# 이 매핑은 parse_marker 가 1차/2차 매치 실패 시 3차 fallback 으로 적용.
+MARKER_ALIASES = {
+    # PLAN_VALIDATION
+    "PLAN_LGTM": "PLAN_VALIDATION_PASS",
+    "PLAN_OK": "PLAN_VALIDATION_PASS",
+    "PLAN_APPROVE": "PLAN_VALIDATION_PASS",
+    "PLAN_APPROVED": "PLAN_VALIDATION_PASS",
+    "PLAN_REJECT": "PLAN_VALIDATION_FAIL",
+    "PLAN_REJECTED": "PLAN_VALIDATION_FAIL",
+    "PLAN_NOT_APPROVED": "PLAN_VALIDATION_FAIL",
+    # DESIGN_VALIDATION
+    "DESIGN_LGTM": "DESIGN_REVIEW_PASS",
+    "DESIGN_OK": "DESIGN_REVIEW_PASS",
+    "DESIGN_APPROVE": "DESIGN_REVIEW_PASS",
+    "DESIGN_APPROVED": "DESIGN_REVIEW_PASS",
+    "DESIGN_REJECT": "DESIGN_REVIEW_FAIL",
+    "DESIGN_REJECTED": "DESIGN_REVIEW_FAIL",
+    # BUGFIX_VALIDATION
+    "BUGFIX_LGTM": "BUGFIX_PASS",
+    "BUGFIX_OK": "BUGFIX_PASS",
+    "BUGFIX_APPROVE": "BUGFIX_PASS",
+    # UX_VALIDATION
+    "UX_LGTM": "UX_REVIEW_PASS",
+    "UX_OK": "UX_REVIEW_PASS",
+    "UX_APPROVE": "UX_REVIEW_PASS",
+    "UX_REJECT": "UX_REVIEW_FAIL",
+    # CODE_VALIDATION (이미 PASS/FAIL 캐노니컬과 충돌 없음)
+    "CODE_LGTM": "PASS",
+    "CODE_OK": "PASS",
+    "CODE_APPROVE": "PASS",
+    # 일반 (알리아스 컬렉션 — 호출자 expected set 안 일 때만 매핑)
+    "APPROVE": "PASS",
+    "APPROVED": "PASS",
+    "OK": "PASS",
+    "REJECT": "FAIL",
+    "REJECTED": "FAIL",
+    "NOT_APPROVED": "FAIL",
+    # 주의: LGTM 단독은 alias 안 함 — pr-reviewer 의 정식 마커이기도 해서 충돌
+}
+
+
 def parse_marker(filepath: str | Path, patterns: str) -> str:
     """에이전트 출력 파일에서 마커를 파싱.
 
@@ -528,7 +577,15 @@ def parse_marker(filepath: str | Path, patterns: str) -> str:
         patterns: 파이프 구분 마커 목록 (e.g. "PASS|FAIL|SPEC_MISSING")
 
     Returns:
-        매칭된 마커 문자열, 없으면 "UNKNOWN"
+        매칭된 마커 문자열 (canonical), 없으면 "UNKNOWN"
+
+    매칭 단계:
+      1차: 구조화된 마커 `---MARKER:X---` (X ∈ patterns)
+      2차: 워드 바운더리 `\\bX\\b` (legacy 폴백)
+      3차: alias map 변형 → canonical 으로 normalize 후 patterns 안에 있으면 반환
+            (LLM 변형 흡수 — defense in depth, jajang 2026-04-28 사고 후속)
+
+    3차에서 alias hit 시 stderr 로 경고 — agent docs 강화 필요 신호.
     """
     try:
         content = Path(filepath).read_text(encoding="utf-8", errors="replace")
@@ -536,6 +593,7 @@ def parse_marker(filepath: str | Path, patterns: str) -> str:
         return "UNKNOWN"
 
     pattern_list = patterns.split("|")
+    expected_set = set(pattern_list)
     joined = "|".join(re.escape(p) for p in pattern_list)
 
     # 1차: 구조화된 마커 ---MARKER:X---
@@ -547,6 +605,22 @@ def parse_marker(filepath: str | Path, patterns: str) -> str:
     m = re.search(rf"\b({joined})\b", content)
     if m:
         return m.group(1)
+
+    # 3차 폴백: alias map — LLM 변형 흡수
+    # canonical 도 ---MARKER:X--- 형태로 emit 가능, 또는 평이 단어
+    alias_keys = "|".join(re.escape(k) for k in MARKER_ALIASES)
+    if alias_keys:
+        m = re.search(rf"---MARKER:({alias_keys})---", content) \
+            or re.search(rf"\b({alias_keys})\b", content)
+        if m:
+            variant = m.group(1)
+            canonical = MARKER_ALIASES[variant]
+            if canonical in expected_set:
+                sys.stderr.write(
+                    f"[parse_marker] alias hit — '{variant}' → '{canonical}' "
+                    f"(agent docs canonical 룰 강화 권장)\n"
+                )
+                return canonical
 
     return "UNKNOWN"
 

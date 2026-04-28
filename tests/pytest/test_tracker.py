@@ -218,5 +218,97 @@ class GitHubBackendDetectionTests(unittest.TestCase):
             _sh.which = original
 
 
+class ParseMarkerAliasTests(unittest.TestCase):
+    """parse_marker alias map — LLM 변형 흡수 (defense in depth)."""
+
+    def setUp(self):
+        from harness import core as _core  # noqa: E402
+        self.core = _core
+        self.tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False, encoding="utf-8"
+        )
+
+    def tearDown(self):
+        import os as _os
+        try:
+            _os.unlink(self.tmp.name)
+        except OSError:
+            pass
+
+    def _write(self, content: str):
+        self.tmp.write(content)
+        self.tmp.flush()
+        self.tmp.close()
+
+    def test_canonical_marker_still_works(self):
+        self._write("preamble\n---MARKER:PLAN_VALIDATION_PASS---\n")
+        r = self.core.parse_marker(self.tmp.name,
+                                   "PLAN_VALIDATION_PASS|PLAN_VALIDATION_FAIL")
+        self.assertEqual(r, "PLAN_VALIDATION_PASS")
+
+    def test_alias_plan_lgtm_to_canonical(self):
+        # jajang 2026-04-28 실측 사례
+        self._write("validator output...\nPLAN_LGTM\n")
+        r = self.core.parse_marker(self.tmp.name,
+                                   "PLAN_VALIDATION_PASS|PLAN_VALIDATION_FAIL|PASS|FAIL")
+        self.assertEqual(r, "PLAN_VALIDATION_PASS")
+
+    def test_alias_plan_ok_to_canonical(self):
+        self._write("validator output...\nPLAN_OK\n")
+        r = self.core.parse_marker(self.tmp.name,
+                                   "PLAN_VALIDATION_PASS|PLAN_VALIDATION_FAIL|PASS|FAIL")
+        self.assertEqual(r, "PLAN_VALIDATION_PASS")
+
+    def test_alias_plan_approve_to_canonical(self):
+        self._write("validator output...\nPLAN_APPROVE\n")
+        r = self.core.parse_marker(self.tmp.name,
+                                   "PLAN_VALIDATION_PASS|PLAN_VALIDATION_FAIL|PASS|FAIL")
+        self.assertEqual(r, "PLAN_VALIDATION_PASS")
+
+    def test_alias_design_lgtm(self):
+        self._write("output\nDESIGN_LGTM\n")
+        r = self.core.parse_marker(self.tmp.name,
+                                   "DESIGN_REVIEW_PASS|DESIGN_REVIEW_FAIL")
+        self.assertEqual(r, "DESIGN_REVIEW_PASS")
+
+    def test_alias_in_marker_block(self):
+        # ---MARKER:PLAN_OK--- 정형 안에 alias 들어와도 잡혀야
+        self._write("output\n---MARKER:PLAN_OK---\n")
+        r = self.core.parse_marker(self.tmp.name,
+                                   "PLAN_VALIDATION_PASS|PLAN_VALIDATION_FAIL|PASS|FAIL")
+        self.assertEqual(r, "PLAN_VALIDATION_PASS")
+
+    def test_alias_only_when_canonical_in_expected(self):
+        # 호출자가 PLAN_VALIDATION_* 기대 안 하면 alias 도 적용 안 됨
+        # (DESIGN 컨텍스트에서 PLAN_LGTM 입력 → UNKNOWN)
+        self._write("output\nPLAN_LGTM\n")
+        r = self.core.parse_marker(self.tmp.name,
+                                   "DESIGN_REVIEW_PASS|DESIGN_REVIEW_FAIL")
+        self.assertEqual(r, "UNKNOWN")
+
+    def test_unknown_when_no_canonical_no_alias(self):
+        self._write("output without any marker\n")
+        r = self.core.parse_marker(self.tmp.name,
+                                   "PLAN_VALIDATION_PASS|PLAN_VALIDATION_FAIL")
+        self.assertEqual(r, "UNKNOWN")
+
+    def test_canonical_takes_precedence_over_alias(self):
+        # 같은 파일에 canonical + alias 모두 있으면 canonical 우선
+        self._write("PLAN_LGTM\n---MARKER:PLAN_VALIDATION_PASS---\n")
+        r = self.core.parse_marker(self.tmp.name,
+                                   "PLAN_VALIDATION_PASS|PLAN_VALIDATION_FAIL|PASS|FAIL")
+        self.assertEqual(r, "PLAN_VALIDATION_PASS")  # 같은 결과지만 1차 매치 경로
+
+    def test_general_approve_to_pass(self):
+        self._write("output\nAPPROVE\n")
+        r = self.core.parse_marker(self.tmp.name, "PASS|FAIL|SPEC_MISSING")
+        self.assertEqual(r, "PASS")
+
+    def test_reject_to_fail(self):
+        self._write("output\nREJECT\n")
+        r = self.core.parse_marker(self.tmp.name, "PASS|FAIL")
+        self.assertEqual(r, "FAIL")
+
+
 if __name__ == "__main__":
     unittest.main()
