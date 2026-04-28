@@ -17,7 +17,7 @@ try:
     from .config import HarnessConfig
     from .core import (
         RunLogger, StateDir, HUD,
-        agent_call, parse_marker, kill_check,
+        agent_call, parse_marker, diagnose_marker_miss, kill_check,
         build_loop_context, run_ux_validation,
         generate_handoff, write_handoff,
     )
@@ -26,7 +26,7 @@ except ImportError:
     from config import HarnessConfig
     from core import (
         RunLogger, StateDir, HUD,
-        agent_call, parse_marker, kill_check,
+        agent_call, parse_marker, diagnose_marker_miss, kill_check,
         build_loop_context, run_ux_validation,
         generate_handoff, write_handoff,
     )
@@ -332,6 +332,7 @@ def run_plan(
             hud.agent_done("ux-architect", int(time.time() - _uxa_t0), _uxa_cost, "fail")
             os.environ["HARNESS_RESULT"] = "UX_FLOW_ESCALATE"
             print(f"[HARNESS] ux-architect -> 마커 감지 실패 ({uxa_marker}) -- UX_FLOW_ESCALATE 처리")
+            print(diagnose_marker_miss(uxa_out_file, "UX_FLOW_READY"))
             run_logger.write_run_end("UX_FLOW_ESCALATE", "", issue_num)
             return "UX_FLOW_ESCALATE"
 

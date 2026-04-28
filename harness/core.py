@@ -497,6 +497,29 @@ class HUD:
 # 4. parse_marker — markers.sh의 parse_marker() 대체
 # ═══════════════════════════════════════════════════════════════════════
 
+def diagnose_marker_miss(out_file: str | Path, expected: str) -> str:
+    """parse_marker 가 UNKNOWN 반환했을 때 디버그용 진단 문자열.
+
+    출력 파일 존재 여부 / 크기 / 마지막 500자를 한 블록으로 반환.
+    caller 가 print 하면 SPEC_GAP_ESCALATE 같은 무진단 실패의 즉시 원인 식별 가능.
+
+    Why: 기존엔 "마커 감지 실패 (UNKNOWN)" 만 출력해 arch_out 본문 확인 불가 →
+    현장 디버그 어려움. 본 헬퍼는 진단 가시성 확보 목적.
+    """
+    try:
+        content = Path(out_file).read_text(encoding="utf-8", errors="replace")
+    except OSError as e:
+        return f"[DIAG] 출력 파일 읽기 실패 ({out_file}): {e}"
+    size = len(content)
+    if size == 0:
+        return (f"[DIAG] {out_file} 비어있음 (크기 0) — 에이전트가 출력하지 않았거나 "
+                f"파일 쓰기 실패. expected marker: {expected}")
+    tail_n = min(size, 500)
+    tail = content[-tail_n:]
+    return (f"[DIAG] {out_file} 크기={size} chars (expected: {expected})\n"
+            f"[DIAG] 마지막 {tail_n}자:\n---\n{tail}\n---")
+
+
 def parse_marker(filepath: str | Path, patterns: str) -> str:
     """에이전트 출력 파일에서 마커를 파싱.
 
@@ -2176,6 +2199,8 @@ def run_plan_validation(
         val_result = "PASS"
     if val_result == "PLAN_VALIDATION_FAIL":
         val_result = "FAIL"
+    if val_result == "UNKNOWN":
+        print(diagnose_marker_miss(val_out, "PLAN_VALIDATION_PASS|FAIL"))
     print(f"[HARNESS] Plan Validation 결과: {val_result}")
 
     if val_result == "PASS":
@@ -2223,6 +2248,8 @@ def run_plan_validation(
             val_out2, run_logger, config,
         )
         val_result = parse_marker(val_out2, "PLAN_VALIDATION_PASS|PLAN_VALIDATION_FAIL|PASS|FAIL")
+        if val_result == "UNKNOWN":
+            print(diagnose_marker_miss(val_out2, "PLAN_VALIDATION_PASS|FAIL (rework)"))
         if val_result == "PLAN_VALIDATION_PASS":
             val_result = "PASS"
         if val_result == "PLAN_VALIDATION_FAIL":
@@ -2262,6 +2289,8 @@ def run_design_validation(
         val_result = "PASS"
     if val_result == "DESIGN_REVIEW_FAIL":
         val_result = "FAIL"
+    if val_result == "UNKNOWN":
+        print(diagnose_marker_miss(val_out, "DESIGN_REVIEW_PASS|FAIL"))
     print(f"[HARNESS] Design Validation 결과: {val_result}")
 
     if val_result == "PASS":
@@ -2292,6 +2321,8 @@ def run_design_validation(
             val_out2, run_logger, config,
         )
         val_result = parse_marker(val_out2, "DESIGN_REVIEW_PASS|DESIGN_REVIEW_FAIL|PASS|FAIL")
+        if val_result == "UNKNOWN":
+            print(diagnose_marker_miss(val_out2, "DESIGN_REVIEW_PASS|FAIL (rework)"))
         if val_result == "DESIGN_REVIEW_PASS":
             val_result = "PASS"
         if val_result == "DESIGN_REVIEW_FAIL":
@@ -2331,6 +2362,8 @@ def run_ux_validation(
         val_result = "PASS"
     if val_result == "UX_REVIEW_FAIL":
         val_result = "FAIL"
+    if val_result == "UNKNOWN":
+        print(diagnose_marker_miss(val_out, "UX_REVIEW_PASS|FAIL"))
     print(f"[HARNESS] UX Validation 결과: {val_result}")
 
     if val_result == "PASS":
@@ -2366,6 +2399,8 @@ def run_ux_validation(
             val_result = "PASS"
         if val_result == "UX_REVIEW_FAIL":
             val_result = "FAIL"
+        if val_result == "UNKNOWN":
+            print(diagnose_marker_miss(val_out2, "UX_REVIEW_PASS|FAIL (rework)"))
         print(f"[HARNESS] UX Validation 재검증 결과: {val_result}")
 
         if val_result == "PASS":

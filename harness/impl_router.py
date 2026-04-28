@@ -17,7 +17,7 @@ try:
     from .config import HarnessConfig
     from .core import (
         Flag, RunLogger, StateDir, HUD,
-        agent_call, parse_marker, detect_depth,
+        agent_call, parse_marker, diagnose_marker_miss, detect_depth,
         run_plan_validation,
         generate_handoff, write_handoff,
         ESCALATE_AUTO_SPEC_GAP_THRESHOLD,
@@ -30,7 +30,7 @@ except ImportError:
     from config import HarnessConfig
     from core import (
         Flag, RunLogger, StateDir, HUD,
-        agent_call, parse_marker, detect_depth,
+        agent_call, parse_marker, diagnose_marker_miss, detect_depth,
         run_plan_validation,
         generate_handoff, write_handoff,
         ESCALATE_AUTO_SPEC_GAP_THRESHOLD,
@@ -414,6 +414,7 @@ def run_impl(
         if arch_marker not in ("LIGHT_PLAN_READY", "READY_FOR_IMPL"):
             os.environ["HARNESS_RESULT"] = "SPEC_GAP_ESCALATE"
             print(f"SPEC_GAP_ESCALATE: architect 마커 감지 실패 ({arch_marker})")
+            print(diagnose_marker_miss(arch_out, "LIGHT_PLAN_READY|READY_FOR_IMPL"))
             return "SPEC_GAP_ESCALATE"
 
         # impl 파일 경로 추출
@@ -431,6 +432,7 @@ def run_impl(
     if not impl_file or not Path(impl_file).exists():
         os.environ["HARNESS_RESULT"] = "SPEC_GAP_ESCALATE"
         print("SPEC_GAP_ESCALATE: architect가 impl 파일을 생성하지 못했다.")
+        print(diagnose_marker_miss(arch_out, "impl_file path (docs/...md)"))
         if run_logger is not None:
             try:
                 run_logger.write_run_end("SPEC_GAP_ESCALATE", "", str(issue_num))
