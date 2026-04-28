@@ -21,6 +21,7 @@ try:
         build_loop_context, run_ux_validation,
         generate_handoff, write_handoff,
     )
+    from .tracker import format_ref
 except ImportError:
     from config import HarnessConfig
     from core import (
@@ -29,6 +30,7 @@ except ImportError:
         build_loop_context, run_ux_validation,
         generate_handoff, write_handoff,
     )
+    from tracker import format_ref
 
 
 def run_plan(
@@ -112,7 +114,7 @@ def run_plan(
         pp_out_file = str(state_dir.path / f"{prefix}_pp_out.txt")
         agent_call(
             "product-planner", 600,
-            f"@MODE:PLANNER:PRODUCT_PLAN\ncontext: {context} issue: #{issue_num}",
+            f"@MODE:PLANNER:PRODUCT_PLAN\ncontext: {context} issue: {format_ref(issue_num)}",
             pp_out_file, run_logger, config,
         )
         pp_out = Path(pp_out_file).read_text(encoding="utf-8", errors="replace")
@@ -180,7 +182,7 @@ def run_plan(
         pr_out_file = str(state_dir.path / f"{prefix}_plan_reviewer_out.txt")
         agent_call(
             "plan-reviewer", 600,
-            f"@MODE:REVIEWER:PLAN_REVIEW\nprd_path: {prd_path}\nissue: #{issue_num}",
+            f"@MODE:REVIEWER:PLAN_REVIEW\nprd_path: {prd_path}\nissue: {format_ref(issue_num)}",
             pr_out_file, run_logger, config,
         )
         _pr_cost = 0.0
@@ -293,13 +295,13 @@ def run_plan(
         if _uxa_mode == "UX_SYNC":
             _uxa_exit = agent_call(
                 "ux-architect", 600,
-                f"@MODE:UX_ARCHITECT:UX_SYNC\nprd_path: {prd_path}\nsrc_dir: src/\nissue: #{issue_num}",
+                f"@MODE:UX_ARCHITECT:UX_SYNC\nprd_path: {prd_path}\nsrc_dir: src/\nissue: {format_ref(issue_num)}",
                 uxa_out_file, run_logger, config,
             )
         else:
             _uxa_exit = agent_call(
                 "ux-architect", 600,
-                f"@MODE:UX_ARCHITECT:UX_FLOW\nprd_path: {prd_path}\nissue: #{issue_num}",
+                f"@MODE:UX_ARCHITECT:UX_FLOW\nprd_path: {prd_path}\nissue: {format_ref(issue_num)}",
                 uxa_out_file, run_logger, config,
             )
 
@@ -406,7 +408,7 @@ def run_plan(
         hud.log("UX_SKIP (UI 없는 기능)")
         print("[HARNESS] UX_SKIP -- UI 없는 기능, 설계 루프 직행")
         print(f"  prd_path: {prd_path or 'N/A'}")
-        print(f"  issue: #{issue_num}")
+        print(f"  issue: {format_ref(issue_num)}")
         run_logger.write_run_end("UX_SKIP", "", issue_num)
         return "UX_SKIP"
 
@@ -415,7 +417,7 @@ def run_plan(
     print("[HARNESS] UX_REVIEW_PASS")
     print(f"  prd_path: {prd_path or 'N/A'}")
     print(f"  ux_flow_doc: {ux_flow_doc or 'N/A'}")
-    print(f"  issue: #{issue_num}")
+    print(f"  issue: {format_ref(issue_num)}")
     print("  -> 유저 승인 1 대기 (PRD + UX Flow)")
     run_logger.write_run_end("UX_REVIEW_PASS", "", issue_num)
     return "UX_REVIEW_PASS"

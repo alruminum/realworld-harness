@@ -18,10 +18,12 @@ try:
     from .core import (
         Flag, RunLogger, StateDir, hlog, write_attempt_meta,
     )
+    from .tracker import format_ref
 except ImportError:
     from core import (
         Flag, RunLogger, StateDir, hlog, write_attempt_meta,
     )
+    from tracker import format_ref
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -560,7 +562,7 @@ def generate_pr_body(
             pr_notes = " ".join(notes)
 
     # 결정 근거
-    why = f"Issue #{issue_num} 구현"
+    why = f"Issue {format_ref(issue_num)} 구현"
     try:
         impl_text = Path(impl_file).read_text(encoding="utf-8")
         in_section = False
@@ -576,7 +578,7 @@ def generate_pr_body(
 
     return (
         f"## What / Why\n"
-        f"Issue #{issue_num} — `{impl_name}`\n"
+        f"Issue {format_ref(issue_num)} — `{impl_name}`\n"
         f"{why}\n\n"
         f"## 작동 증거\n"
         f"- test: {test_summary}\n"

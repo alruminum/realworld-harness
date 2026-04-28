@@ -385,4 +385,52 @@ gh CLI 미설치  →  GitHub Issue 번호(#N) 발급 불가
 
 ---
 
+## `HARNESS-CHG-20260428-02` — 2026-04-28
+
+### Rationale
+
+`HARNESS-CHG-20260428-01` 의 자연스러운 후속 — 추적 ID 추상화를 들이고 *남은* 두 흠과 한 부수발견 정리. 코어 워크플로우 영향은 없으나, LocalBackend 사용 시 다음 미관/일관성 흠이 드러남:
+
+1. `core.py:create_feature_branch` 가 직접 `gh issue view` 를 호출 → LOCAL-N 에선 silent fail → branch 슬러그가 빈 채로 `feat/LOCAL-7` 만 남음 (사람 읽기 슬러그 손실, 기능 차단은 아님)
+2. 다수 f-string `f"#{issue_num}"` 가 LOCAL-N 입력 시 `#LOCAL-7` 이중 prefix 출력 (commit msg / PR title / agent prompt 모두). 가독성 ↓.
+3. (부수발견) `--issue '#42'` 형태 입력 시 디렉토리·git branch 가 `#` 포함해 안전성 깨짐 — 호출자 어디도 그렇게 안 넘기지만 보호장치 부재.
+
+세 가지 모두 *기능 차단은 아니지만* 시스템 일관성 흠. 진단(2026-04-28) 시 유저가 *수리* 의지를 명시 → 이번 Task-ID 로 묶어 처리.
+
+### Alternatives
+
+| # | 옵션 | 평가 |
+|---|---|---|
+| 1 | 흠 무시, LocalBackend 미관 감수 | 거부 — 시스템 정체성(예측 가능성·일관성) 약화. 작은 흠이 누적되면 큰 부채 |
+| 2 | f-string 만 교체, gh→tracker 는 보류 | 거부 — 부분 작업. LocalBackend branch 슬러그 흠은 그대로 남음 |
+| **3** | **세 흠 일괄 수리 + smoke-test 회귀 회로 추가** | **선택** — 한 PR 안에서 일관성 회복, 자동 회귀 방어 |
+| 4 | tracker.py 에 백엔드 metadata 헬퍼 추가 (e.g., `format_ref` 를 IssueRef 메서드로) | 부분 채택 — `IssueRef.internal` property 만 채택. `format_ref` 는 module-level 함수로 (str/int/IssueRef 모두 수용 위해) |
+
+### Decision
+
+옵션 3 채택. 결정 항목:
+
+| 항목 | 값 | 근거 |
+|---|---|---|
+| 표현 분리 | `display form` ("#42" / "LOCAL-7") vs `internal form` ("42" / "LOCAL-7") | display = commit msg / PR title / agent prompt. internal = 디렉토리 / flag / git branch / env. 두 표현이 github 케이스에서만 차이 (`#42` vs `42`) — 이 차이가 부수발견의 원인 |
+| 헬퍼 형태 | `format_ref(s)` + `normalize_issue_num(s)` module-level 함수 | str/int/IssueRef 모두 수용. caller 다양성 수용 |
+| `IssueRef.internal` | property | dataclass 와 일관, 즉시 호출 |
+| `parse_ref` 멱등성 | IssueRef 입력 → 그대로 반환 | normalize 패턴에서 흔히 발생, 방어적 |
+| f-string 일괄 교체 | 7파일 30+곳 mechanical replace_all | 패턴이 매우 specific (`#{issue_num}` / `#{issue}`) — false match 위험 0 |
+| executor 진입 normalize | line 58 의 args parse 직후 | env / flag / dir 모든 다운스트림 의존이 여기서 시작. 한 곳만 normalize 하면 끝 |
+| smoke-test §9 추가 | 5 케이스 (parse_ref / format+normalize / LocalBackend 라운드트립 / 강제 폴백 / which) | tracker 회로 회귀 자동 감지. CI 무료 |
+
+### Follow-Up
+
+- `[2.1]` ✅ tracker.py 헬퍼 + 33/33 테스트 (commit `7a5a64f`)
+- `[2.2]` ✅ core/impl_loop/impl_router/plan_loop/helpers/notify/executor 7파일 정합 (commit `942cb7d`)
+- `[2.3]` ✅ smoke-test §9 tracker 회로 — 56/56 PASS (commit `0a31611`)
+- `[2.4]` 본 commit — rationale 4섹션 + PR 생성
+
+후속 별도 Task-ID 권장:
+- helpers.py:579 의 `f"Issue {format_ref(issue_num)} — `{impl_name}`\n"` 같은 PR body 가 GitHub 의 `Closes #N` 자동 클로즈 동작에 의존 — LocalBackend 에선 의미 없음. tracker 백엔드별 PR body 형식 분기 가능 (낮 우선)
+- worktree 격리 디렉토리 cleanup 시 LOCAL-N 디렉토리도 같은 라이프사이클인지 검증 (smoke-test §9 가 일부 cover)
+
+---
+
 > 새 항목은 위 형식으로 추가. Task-ID 헤더는 H2(`##`), 4섹션은 H3(`###`).

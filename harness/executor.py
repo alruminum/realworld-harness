@@ -38,9 +38,11 @@ def main() -> None:
     try:
         from .config import load_config
         from .core import StateDir, RunLogger, Flag, find_main_repo_root
+        from .tracker import format_ref, normalize_issue_num
     except ImportError:
         from config import load_config
         from core import StateDir, RunLogger, Flag, find_main_repo_root
+        from tracker import format_ref, normalize_issue_num
 
     # L2 방어: cwd가 worktree 내부로 persist된 상태면 main repo root로 복귀.
     # Claude Code Bash tool은 세션 간 cwd를 유지하므로 `cd .worktrees/...` 이후 호출 시
@@ -55,7 +57,9 @@ def main() -> None:
 
     config = load_config()
     prefix = args.prefix or config.prefix
-    issue_num = getattr(args, "issue_num", "") or ""
+    # 진입점에서 normalize — 디렉토리·flag·env 안전한 internal 형식으로 변환.
+    # "#42" → "42", "LOCAL-7" 보존, 빈 문자열은 그대로.
+    issue_num = normalize_issue_num(getattr(args, "issue_num", "") or "")
 
     # Phase 3: 세션 ID 부팅 — HARNESS_SESSION_ID env → .session-id 파일
     sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
@@ -85,7 +89,7 @@ def main() -> None:
         if cooldown:
             from datetime import datetime
             ts = datetime.fromtimestamp(cooldown.get("timestamp", 0)).strftime("%Y-%m-%d %H:%M:%S")
-            print(f"[HARNESS] ⚠️ 이슈 #{issue_num} cooldown 중 — {cooldown.get('reason')} ({ts})")
+            print(f"[HARNESS] ⚠️ 이슈 {format_ref(issue_num)} cooldown 중 — {cooldown.get('reason')} ({ts})")
             print(f"  branch: {cooldown.get('branch','?')}")
             if cooldown.get("stderr_tail"):
                 print(f"  사유: {cooldown['stderr_tail'][:200]}")
@@ -101,14 +105,14 @@ def main() -> None:
         except ImportError:
             from core import clear_merge_cooldown
         clear_merge_cooldown(Path.cwd(), prefix, issue_num)
-        print(f"[HARNESS] cooldown 우회: 이슈 #{issue_num}")
+        print(f"[HARNESS] cooldown 우회: 이슈 {format_ref(issue_num)}")
 
     # Phase 3: 이슈 lock 획득 — 두 세션이 같은 이슈 동시 작업 방지
     if ss is not None and session_id and issue_num:
         try:
             ok, holder = ss.claim_issue_lock(prefix, issue_num, session_id, mode=args.mode)
             if not ok and holder:
-                print(f"[HARNESS] 오류: 이슈 #{issue_num}은 세션 {holder.get('session_id','')[:8]}…가 "
+                print(f"[HARNESS] 오류: 이슈 {format_ref(issue_num)}은 세션 {holder.get('session_id','')[:8]}…가 "
                       f"PID {holder.get('pid')}로 이미 작업 중입니다.")
                 print("동시 작업은 지원하지 않습니다. /harness-kill 또는 세션 완료를 기다리세요.")
                 sys.exit(1)

@@ -91,6 +91,16 @@ class ParseRefTests(unittest.TestCase):
         self.assertEqual(r.backend, "github")
         self.assertEqual(r.raw, "#42")
 
+    def test_int_input(self):
+        r = tr.parse_ref(42)
+        self.assertEqual(r.backend, "github")
+        self.assertEqual(r.raw, "#42")
+
+    def test_idempotent_on_issue_ref(self):
+        r1 = tr.parse_ref("LOCAL-7")
+        r2 = tr.parse_ref(r1)
+        self.assertIs(r1, r2)
+
     def test_invalid_raises(self):
         with self.assertRaises(ValueError):
             tr.parse_ref("xyz")
@@ -98,6 +108,72 @@ class ParseRefTests(unittest.TestCase):
     def test_invalid_local_format(self):
         with self.assertRaises(ValueError):
             tr.parse_ref("LOCAL-")
+
+
+class IssueRefInternalTests(unittest.TestCase):
+    """IssueRef.internal — 디렉토리·flag·branch·env 안전한 내부 표현."""
+
+    def test_github_internal_is_bare_number(self):
+        r = tr.parse_ref("#42")
+        self.assertEqual(r.internal, "42")
+
+    def test_local_internal_preserves_form(self):
+        r = tr.parse_ref("LOCAL-7")
+        self.assertEqual(r.internal, "LOCAL-7")
+
+    def test_github_legacy_internal(self):
+        r = tr.parse_ref("42")
+        self.assertEqual(r.internal, "42")
+
+
+class FormatRefTests(unittest.TestCase):
+    """format_ref — display form (commit msg, PR title)."""
+
+    def test_bare_number_to_hash(self):
+        self.assertEqual(tr.format_ref("42"), "#42")
+
+    def test_hash_idempotent(self):
+        self.assertEqual(tr.format_ref("#42"), "#42")
+
+    def test_local_unchanged(self):
+        self.assertEqual(tr.format_ref("LOCAL-7"), "LOCAL-7")
+
+    def test_int_input(self):
+        self.assertEqual(tr.format_ref(42), "#42")
+
+    def test_issue_ref_input(self):
+        ref = tr.IssueRef("local", 1, "LOCAL-1")
+        self.assertEqual(tr.format_ref(ref), "LOCAL-1")
+
+    def test_empty_is_empty(self):
+        self.assertEqual(tr.format_ref(""), "")
+        self.assertEqual(tr.format_ref(None), "")
+
+
+class NormalizeIssueNumTests(unittest.TestCase):
+    """normalize_issue_num — internal form (디렉토리·flag·branch)."""
+
+    def test_bare_number_unchanged(self):
+        self.assertEqual(tr.normalize_issue_num("42"), "42")
+
+    def test_strips_leading_hash(self):
+        # 부수발견 수리: "#42" → "42" — 디렉토리/branch 안전
+        self.assertEqual(tr.normalize_issue_num("#42"), "42")
+
+    def test_local_preserved(self):
+        self.assertEqual(tr.normalize_issue_num("LOCAL-7"), "LOCAL-7")
+
+    def test_int_input(self):
+        self.assertEqual(tr.normalize_issue_num(42), "42")
+
+    def test_issue_ref_input(self):
+        ref = tr.IssueRef("local", 1, "LOCAL-1")
+        self.assertEqual(tr.normalize_issue_num(ref), "LOCAL-1")
+
+    def test_empty_is_empty(self):
+        # executor 의 issue 미지정 케이스 — 빈 문자열 그대로
+        self.assertEqual(tr.normalize_issue_num(""), "")
+        self.assertEqual(tr.normalize_issue_num(None), "")
 
 
 class GetTrackerTests(unittest.TestCase):

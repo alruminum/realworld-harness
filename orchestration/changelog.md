@@ -41,6 +41,9 @@
 | `HARNESS-CHG-20260428-01` | 2026-04-28 | agent | [1.4] agents/designer.md Phase 0-0 — gh issue create → tracker CLI + commit-gate.py Gate 1 가드 확장 | — |
 | `HARNESS-CHG-20260428-01` | 2026-04-28 | agent | [1.5] agents/qa.md MCP 미가용 폴백 — Bash 추가 (tracker CLI 한정) + 폴백 흐름 안내 | — |
 | `HARNESS-CHG-20260428-01` | 2026-04-28 | spec  | [1.6] docs/harness-spec.md §3 I-2 추적 ID 일반형 표현 + harness-architecture.md §6 추적 백엔드 신규 섹션 | `Document-Exception: rationale.md 4섹션은 본 Task-ID 의 [1.2] commit 0c9d5f3 에서 일괄 작성됨 — 본 [1.6] 은 그 결정의 spec 적용` |
+| `HARNESS-CHG-20260428-02` | 2026-04-28 | infra | [2.1] tracker.py — IssueRef.internal property + format_ref() + normalize_issue_num() + 단위 테스트 33/33 | — |
+| `HARNESS-CHG-20260428-02` | 2026-04-28 | infra | [2.2] core.py 의 gh issue view → tracker.get_issue() 위임 + 7파일 f-string `#{issue_num}` → `{format_ref(issue_num)}` + executor 진입 normalize | — |
+| `HARNESS-CHG-20260428-02` | 2026-04-28 | infra | [2.3] smoke-test.sh §9 tracker LOCAL-N regression 회로 5건 추가 (parse_ref / format/normalize / LocalBackend 라운드트립 / 강제 폴백 / which CLI) — 56/56 PASS | — |
 
 ---
 
@@ -235,6 +238,29 @@
 - 진단 보고: 유저 세션 (2026-04-28) — RWHarness 가 OSS 스택(Husky / lint-staged / GH Actions) 대비 너무 strict 하다는 지적
 - `docs/harness-spec.md §0 Core Invariant` — 본 변경은 §0 자체는 보존, §3 의 *구현 표현*만 갱신
 - `orchestration/policies.md §2` — `[invariant-shift]` PR token 룰
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-02` — 2026-04-28 — 추적 ID 추상화 follow-up (잔존 흠 + 부수발견 수리)
+
+**Type**: infra (코드 + 테스트, spec 변경 없음)
+
+**Branch**: `harness/tracker-cleanup`
+
+**Issue**: 별도 추적 ID 미발급 — 직전 `HARNESS-CHG-20260428-01` (LOCAL-1) 의 자연 후속. 진단(2026-04-28) 시점에 유저 수리 지시 명시 ("잔존 홀이랑 부수발견 수리" + "1+2 후보도 같이 처리해줘" → smoke-test 통합)
+
+**Sub-commits**:
+- `[2.1]` `7a5a64f` `harness/tracker.py` (+50) — `IssueRef.internal` property + `format_ref()` + `normalize_issue_num()` + parse_ref 멱등 확장. `tests/pytest/test_tracker.py` (+60) 16→33 케이스
+- `[2.2]` `942cb7d` 7파일 정합 — `core.py` 의 `gh issue view` → `tracker.get_issue()` 위임 + f-string `#{issue_num}` → `{format_ref(issue_num)}` 일괄 교체 + executor 진입 `normalize_issue_num` 적용
+- `[2.3]` `0a31611` `scripts/smoke-test.sh` §9 신규 — tracker LOCAL-N regression 회로 5 케이스 (56/56 PASS)
+- `[2.4]` (본 commit) `rationale.md` 4섹션 + Task-ID 본문 + PR
+
+**Linked**:
+- `HARNESS-CHG-20260428-01` (commit `c18003e`) — 추적 ID 추상화 (이번 정리의 모태)
+- 진단 보고: 유저 세션 (2026-04-28) — "잔존 홀이랑 부수발견 수리"
+- `[2.2]` 검증: py_compile 8/8 + unittest 33/33 + smoke-test 56/56
 
 **Exception**: —
 

@@ -8,7 +8,7 @@
 #   CLAUDE_PLUGIN_ROOT=/path/to/plugin bash scripts/smoke-test.sh
 #     → 플러그인 모드 시뮬레이션
 #
-# 검증 항목 (10개):
+# 검증 항목 (11개):
 #  1. Python 파일 syntax (py_compile)
 #  2. hooks/hooks.json JSON 파싱
 #  3. .claude-plugin/{plugin,marketplace}.json 파싱
@@ -19,6 +19,7 @@
 #  8. setup-rwh.sh + scripts/hooks/pre-commit.sh syntax
 #  9. hooks/ 의 sys.path 트릭으로 harness_common 등 import 가능
 # 10. SKIP_DOC_SYNC env 우회 동작 (pre-commit.sh)
+# 11. tracker.py — parse_ref / format_ref / normalize / LocalBackend 회로 (LOCAL-N regression 방어)
 #
 # 종료 코드: 0 = ALL PASS / 1 = 1개 이상 FAIL
 set -u
@@ -152,6 +153,74 @@ mkdir -p scripts/hooks
 ln -sf $REPO_ROOT/scripts/hooks/pre-commit.sh scripts/hooks/pre-commit.sh
 SKIP_DOC_SYNC=1 bash scripts/hooks/pre-commit.sh 2>&1 | grep -q 'SKIP_DOC_SYNC=1' && echo OK
 "
+
+echo ""
+echo "[9] tracker.py — parse_ref / format_ref / normalize_issue_num"
+run "parse_ref 6 케이스 (#42 / LOCAL-7 / 42 / int / IssueRef 멱등 / 빈 입력 무시)" python3 -c "
+import sys; sys.path.insert(0, '.')
+from harness.tracker import parse_ref, format_ref, normalize_issue_num, IssueRef
+
+assert parse_ref('#42').raw == '#42' and parse_ref('#42').backend == 'github'
+assert parse_ref('LOCAL-7').raw == 'LOCAL-7' and parse_ref('LOCAL-7').backend == 'local'
+assert parse_ref('42').raw == '#42'
+assert parse_ref(42).raw == '#42'
+r = parse_ref('LOCAL-1')
+assert parse_ref(r) is r, '멱등 깨짐'
+print('OK: 5 케이스 통과')
+"
+
+run "format_ref / normalize 일관성 (디스플레이/내부 분리)" python3 -c "
+import sys; sys.path.insert(0, '.')
+from harness.tracker import format_ref, normalize_issue_num
+
+cases = [
+    ('42',      '#42',      '42'),
+    ('#42',     '#42',      '42'),       # 부수발견: 디렉토리 안전한 internal
+    ('LOCAL-7', 'LOCAL-7',  'LOCAL-7'),
+    (42,        '#42',      '42'),
+    ('',        '',         ''),
+    (None,      '',         ''),
+]
+for inp, exp_disp, exp_int in cases:
+    d = format_ref(inp)
+    n = normalize_issue_num(inp)
+    assert d == exp_disp, f'format_ref({inp!r}) = {d!r}, exp {exp_disp!r}'
+    assert n == exp_int, f'normalize({inp!r}) = {n!r}, exp {exp_int!r}'
+print(f'OK: {len(cases)} 케이스 모두 통과')
+"
+
+run "LocalBackend 라운드트립 (tmpdir create→get→comment)" python3 -c "
+import sys, tempfile
+from pathlib import Path
+sys.path.insert(0, '.')
+from harness.tracker import LocalBackend, IssueRef
+
+with tempfile.TemporaryDirectory() as tmp:
+    b = LocalBackend(root=Path(tmp))
+    r1 = b.create_issue('first', 'body1', ['bug'])
+    r2 = b.create_issue('second', 'body2')
+    assert r1.raw == 'LOCAL-1' and r2.raw == 'LOCAL-2'
+
+    e = b.get_issue(r1)
+    assert e['title'] == 'first' and e['labels'] == ['bug']
+
+    b.add_comment(r1, 'reviewed')
+    e2 = b.get_issue(r1)
+    assert len(e2['comments']) == 1 and e2['comments'][0]['body'] == 'reviewed'
+print('OK: create + get + comment 라운드트립')
+"
+
+run "HARNESS_TRACKER=local 강제 폴백 (gh 가용해도 local 선택)" python3 -c "
+import sys, os
+sys.path.insert(0, '.')
+os.environ['HARNESS_TRACKER'] = 'local'
+from harness.tracker import get_tracker
+b = get_tracker()
+assert b.name == 'local', f'expected local, got {b.name}'
+print('OK: HARNESS_TRACKER=local 우선')
+"
+
+run "tracker which CLI 출력 — selected 라인 + 두 백엔드 가용성" python3 -m harness.tracker which
 
 echo ""
 echo "==================================="

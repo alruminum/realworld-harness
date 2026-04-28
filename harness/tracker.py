@@ -36,18 +36,40 @@ from typing import Optional, Protocol
 class IssueRef:
     backend: str       # "github" | "local"
     number: int
-    raw: str           # "#42" | "LOCAL-7"
+    raw: str           # "#42" | "LOCAL-7"  (display form)
 
     def __str__(self) -> str:
         return self.raw
 
+    @property
+    def internal(self) -> str:
+        """파일시스템·env·git branch 안전한 내부 표현.
 
-def parse_ref(s: str) -> IssueRef:
-    """추적 ID 문자열 파싱.
+        - github → 정수 문자열 ("42") — 디렉토리·flag·branch 명에 그대로 사용 가능
+        - local  → "LOCAL-7" (display form 과 동일 — 이미 안전한 형태)
 
-    수용 형식: "#42", "LOCAL-7", "42" (legacy GitHub)
+        display form (`raw`) 와의 차이는 github 케이스에서만 의미 있음:
+        `#42` 는 commit msg / PR title 용, `42` 는 dir/flag/branch 용.
+        """
+        if self.backend == "local":
+            return self.raw
+        return str(self.number)
+
+
+def parse_ref(s) -> IssueRef:
+    """추적 ID 파싱. str / int / IssueRef 모두 수용 (멱등).
+
+    수용 형식:
+      - "#42" → github
+      - "LOCAL-7" → local
+      - "42" 또는 42 → github (legacy 정수)
+      - IssueRef → 그대로 반환 (멱등성)
     """
-    s = s.strip()
+    if isinstance(s, IssueRef):
+        return s
+    if isinstance(s, int):
+        return IssueRef("github", s, f"#{s}")
+    s = (s or "").strip()
     if s.startswith("#") and s[1:].isdigit():
         return IssueRef("github", int(s[1:]), s)
     if s.startswith("LOCAL-") and s[6:].isdigit():
@@ -56,6 +78,30 @@ def parse_ref(s: str) -> IssueRef:
         n = int(s)
         return IssueRef("github", n, f"#{n}")
     raise ValueError(f"Unknown issue ref: {s!r}")
+
+
+def format_ref(s) -> str:
+    """Display form 반환 — commit msg / PR title 용.
+
+    "42" → "#42", "#42" → "#42", "LOCAL-7" → "LOCAL-7", IssueRef → ref.raw
+
+    빈 문자열·None 입력은 빈 문자열로 (caller 측 graceful 처리 위해).
+    """
+    if not s and s != 0:
+        return ""
+    return parse_ref(s).raw
+
+
+def normalize_issue_num(s) -> str:
+    """Internal form 반환 — 디렉토리·flag·git branch·env 용.
+
+    "42" → "42", "#42" → "42", "LOCAL-7" → "LOCAL-7", IssueRef → ref.internal
+
+    빈 문자열·None 은 빈 문자열로 (executor 진입 시 issue 미지정 케이스).
+    """
+    if not s and s != 0:
+        return ""
+    return parse_ref(s).internal
 
 
 # ── Backend Protocol ──
