@@ -283,7 +283,8 @@ def run_plan(
     if not _skip_uxa:
         # UX_SYNC 모드 분기: src/ 존재 + ux-flow.md 없음
         _uxa_mode = "UX_FLOW"
-        if Path("src").exists() and not Path("docs/ux-flow.md").exists():
+        from .path_resolver import engineer_scope_any_exists
+        if engineer_scope_any_exists() and not Path("docs/ux-flow.md").exists():
             _uxa_mode = "UX_SYNC"
             print(f"[HARNESS] src/ 존재 + ux-flow.md 없음 -> UX_SYNC 모드")
 
@@ -293,9 +294,11 @@ def run_plan(
         uxa_out_file = str(state_dir.path / f"{prefix}_uxa_out.txt")
 
         if _uxa_mode == "UX_SYNC":
+            from .path_resolver import engineer_scope_human_dir_list
+            _src_dir_label = engineer_scope_human_dir_list()
             _uxa_exit = agent_call(
                 "ux-architect", 600,
-                f"@MODE:UX_ARCHITECT:UX_SYNC\nprd_path: {prd_path}\nsrc_dir: src/\nissue: {format_ref(issue_num)}",
+                f"@MODE:UX_ARCHITECT:UX_SYNC\nprd_path: {prd_path}\nsrc_dir: {_src_dir_label}\nissue: {format_ref(issue_num)}",
                 uxa_out_file, run_logger, config,
             )
         else:
