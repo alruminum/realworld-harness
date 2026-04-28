@@ -101,9 +101,18 @@ def main():
             "engineer": 'python3 "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/harness/executor.py" impl --impl <path> --issue <REF>',
             "architect": 'python3 "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/harness/executor.py" impl|plan ...',
         }
-        deny(f"❌ {agent}는 harness/executor.py를 통해서만 호출 가능. "
-             f"{get_flags_dir()}/{PREFIX}_{FLAGS.HARNESS_ACTIVE} 없음. "
-             f"직접 호출 금지 → {cmds.get(agent, 'executor.py')}")
+        deny(
+            f"❌ {agent}는 harness/executor.py를 통해서만 호출 가능. "
+            f"{get_flags_dir()}/{PREFIX}_{FLAGS.HARNESS_ACTIVE} 없음. "
+            f"직접 호출 금지 → {cmds.get(agent, 'executor.py')}\n"
+            "\n"
+            "🚫 패닉 회로 — 직전에 executor 가 SPEC_GAP_ESCALATE / 무진전 / 외부 종료\n"
+            "   등으로 멈췄다고 해서 이 에이전트를 직접 부르지 마라. 우회 시도는\n"
+            "   상태 추적 붕괴 + I-2 위반이다. 대신:\n"
+            "   1. executor.py 재실행 (`--force-retry` 옵션으로 cooldown 우회 가능)\n"
+            "   2. 새 셸/세션 (stale 상태 자동 복구 — HARNESS-CHG-20260428-06)\n"
+            "   3. 그래도 막히면 유저 보고 — 메인 Claude 영역 아님."
+        )
 
     # 3a. Mode-level 게이트 — architect/validator 세분화
     #     product-plan 스킬 6단계처럼 SYSTEM_DESIGN은 메인 Claude 직접 호출 허용이지만,
