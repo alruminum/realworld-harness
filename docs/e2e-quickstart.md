@@ -29,7 +29,7 @@ ls "$RW/hooks/"   # 23개 .py 확인되면 OK
 ```bash
 # ~/.claude 의 진짜 init 스크립트 이름은 setup-harness.sh (RWHarness 에선 setup-rwh.sh)
 ls ~/.claude/hooks/   # 활성 확인
-# 단, ~/.claude/scripts/setup-rwh.sh 가 없으니 옵션 B 사용 권장
+# 단, 마이그레이션 후엔 ~/.claude/scripts/ 가 비어있으니 옵션 B 사용 권장
 ```
 
 테스트 프로젝트 생성:

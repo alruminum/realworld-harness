@@ -50,6 +50,7 @@
 | `HARNESS-CHG-20260428-05` | 2026-04-28 | agent | [5.2] architect sub-docs 출력 형식 canonical — light-plan/module-plan/task-decompose `---MARKER:X---` 정형 마커로 통일 + preamble 자가-체크 룰 추가 | — |
 | `HARNESS-CHG-20260428-06` | 2026-04-28 | infra | [6.1] AI 패닉 회로 차단 — agent-gate.py + plugin-write-guard.py deny 메시지에 명시적 복구 가이드 (executor 재실행 / 새 세션 / 유저 보고 — 인프라 inspect/edit 금지) | — |
 | `HARNESS-CHG-20260428-06` | 2026-04-28 | infra | [6.2] executor.py stale lock 자동 정리 visibility — silent unlink → 명시적 메시지 ("직전 실행 PID=X 죽음, 재진행합니다") | — |
+| `HARNESS-CHG-20260428-07` | 2026-04-28 | infra | [7.1] migration audit — `~/.claude/scripts/`, `~/.claude/setup-harness.sh`, `~/.claude/agents/{agent}.md` 잔존 hardcode 5 파일 9 위치 일괄 env-aware 교체 (PR #4 systematic 후속) | `Document-Exception: harness-architecture.md 단일 행 path 정정 — 의사결정 변경 없는 문구 fix 라 rationale 4섹션 불필요. 본 Task-ID 본문 섹션이 동기·범위 명시` |
 
 ---
 
@@ -440,6 +441,57 @@
 - `HARNESS-CHG-20260428-04` (PR #4): 같은 사례 1단계 (path)
 - `HARNESS-CHG-20260428-05` (PR #5): 같은 사례 2단계 (marker)
 - 본 PR: 같은 사례 3단계 (process recovery panic)
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-07` — 2026-04-28 — migration systematic audit (PR #4 follow-up)
+
+**Type**: infra (commands + scripts + docs)
+
+**Branch**: `harness/migration-audit`
+
+**Issue**: jajang 사례 — `/harness-review` 스킬 실행 시 `~/.claude/scripts/harness-review.py` No such file. PR #4 가 `~/.claude/harness/executor.py` 만 잡고 같은 systematic drift 의 다른 파일은 놓침.
+
+**원인 — 마이그레이션 부실 입증**:
+- 업스트림 `alruminum/ClaudeCodeAgentPrompt` 자체가 `~/.claude/` 임 → 모든 절대경로 reference 가 자기를 가리킴 (정상)
+- `migrate-step2.sh:85-100` 가 `~/.claude/{harness,scripts,setup-harness.sh}` *적극 삭제*
+- 그러나 파일 내부 *reference* 는 *그대로* — 마이그레이션이 file copy 만 하고 reference rewrite 안 함
+- PR #4 가 일부 패턴 잡았지만 systematic 정리 안 했음
+
+**검증**:
+```
+업스트림 commands/harness-review.md:21 → ~/.claude/scripts/harness-review.py
+RWHarness commands/harness-review.md:21 → ~/.claude/scripts/harness-review.py (변경 안 됨)
+```
+
+**수정 (5 파일 9 위치)**:
+- `commands/harness-review.md` (4 위치) — `~/.claude/scripts/harness-review.py` → env-aware
+- `commands/init-rwh.md` (2 위치) — `~/.claude/setup-harness.sh` → `${CLAUDE_PLUGIN_ROOT}/scripts/setup-rwh.sh` (이름도 정정)
+- `scripts/classify-miss-report.py` (2 위치, docstring) — usage 라인 env-aware
+- `scripts/harness-review.py` (5 위치) — fix recommendation 메시지 + classify-miss-report 호출 안내 → env-aware
+- `scripts/setup-rwh.sh` (1 위치, 헤더 주석) — 사용법 안내 정리 (~/.claude/scripts/setup-rwh.sh 폴백 → 소스 클론 직접 사용 폴백)
+- `docs/e2e-quickstart.md` (1 위치) — 옵션 C 안내 텍스트 정정
+- `docs/harness-architecture.md` (1 위치) — 등록 경로 행 정정
+
+**비변경 (의도)**:
+- `docs/migration-from-source.md` — 마이그레이션 가이드 자체. 삭제 명령어 안내는 보존
+- `commands/init-rwh.md:68,123` — agents/ 위치 안내 텍스트
+- `~/.claude/harness-projects.json`, `~/.claude/harness-memory.md`, `~/.claude/harness-logs/` 등 — 실제 ~/.claude/ 에 존재하는 사용자 자산. 정당
+- `orchestration/upstream/*` — historical snapshot
+
+**검증**:
+- `python3 -m py_compile scripts/harness-review.py scripts/classify-miss-report.py` — OK
+- `bash scripts/smoke-test.sh` — 56/56 PASS
+- `python3 -m unittest tests.pytest.test_tracker` — 33/33 OK
+- 잔존 `~/.claude/scripts/` 액션 가능한 위치 0건 (의도된 안내 텍스트만 남음)
+
+**Linked**:
+- jajang 사례 (2026-04-28) `/harness-review` 발화
+- 업스트림 검증: `gh api repos/alruminum/ClaudeCodeAgentPrompt/contents/commands/harness-review.md`
+- `HARNESS-CHG-20260428-04` (PR #4) — 같은 systematic drift 의 executor 영역
+- 후속: `HARNESS-CHG-20260428-08` — validator sub-docs canonical 마커 (jajang 사례의 *별개* 카테고리)
 
 **Exception**: —
 

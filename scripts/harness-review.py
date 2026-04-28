@@ -323,7 +323,7 @@ def detect_waste(timeline, agent_stats, stream_tools, stream_files, decisions, e
                 "agent": agent,
                 "detail": f"{agent}가 인프라 파일 {len(infra_hits)}개 탐색",
                 "files": infra_hits,
-                "fix": f"~/.claude/agents/{agent}.md 프롬프트에 인프라 탐색 금지 강화",
+                "fix": f"agents/{agent}.md (플러그인 루트, 또는 ${{CLAUDE_PLUGIN_ROOT}}/agents/{agent}.md) 프롬프트에 인프라 탐색 금지 강화",
             })
 
     # WASTE_SUB_AGENT: 서브에이전트 과다 스폰
@@ -335,7 +335,7 @@ def detect_waste(timeline, agent_stats, stream_tools, stream_files, decisions, e
                 "severity": "HIGH",
                 "agent": agent,
                 "detail": f"{agent}가 서브에이전트 {agent_count}개 스폰",
-                "fix": f"~/.claude/agents/{agent}.md에 'Agent 도구 사용 금지' 추가",
+                "fix": f"agents/{agent}.md (플러그인 루트, 또는 ${{CLAUDE_PLUGIN_ROOT}}/agents/{agent}.md)에 'Agent 도구 사용 금지' 추가",
             })
 
     # WASTE_TIMEOUT: 타임아웃 직전 + 결과 없음, 또는 incomplete(킬/중단)
@@ -374,7 +374,7 @@ def detect_waste(timeline, agent_stats, stream_tools, stream_files, decisions, e
                 "severity": "HIGH",
                 "agent": agent,
                 "detail": f"{agent}(ReadOnly)가 Bash {bash_count}회 호출",
-                "fix": f"~/.claude/agents/{agent}.md에 Bash 도구 사용 금지 명시",
+                "fix": f"agents/{agent}.md (플러그인 루트, 또는 ${{CLAUDE_PLUGIN_ROOT}}/agents/{agent}.md)에 Bash 도구 사용 금지 명시",
             })
 
     # SLOW_PHASE: 비정상 지연 (기대값 2배 초과)
@@ -1272,7 +1272,7 @@ def _classify_miss_summary():
     if candidates:
         out += f" | 승격 후보 {len(candidates)}건"
     if pct < 70:
-        out += " ⚠️ 커버리지 낮음 — python3 ~/.claude/scripts/classify-miss-report.py 실행 권장"
+        out += ' ⚠️ 커버리지 낮음 — python3 "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/scripts/classify-miss-report.py" 실행 권장'
     return out
 
 

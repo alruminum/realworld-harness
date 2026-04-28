@@ -18,11 +18,11 @@ argument-hint: "[prefix] [--last N]"
 ```bash
 ARGS="$ARGUMENTS"
 if [ -z "$ARGS" ]; then
-  python3 ~/.claude/scripts/harness-review.py --list
+  python3 "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/scripts/harness-review.py" --list
 elif echo "$ARGS" | grep -q "\-\-last"; then
-  python3 ~/.claude/scripts/harness-review.py --prefix $ARGS
+  python3 "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/scripts/harness-review.py" --prefix $ARGS
 else
-  python3 ~/.claude/scripts/harness-review.py --prefix $ARGS
+  python3 "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/scripts/harness-review.py" --prefix $ARGS
 fi
 ```
 
@@ -32,7 +32,7 @@ fi
 2. 출력된 목록을 유저에게 보여주고 **"몇 번을 분석할까요?"** 라고 묻는다.
 3. 유저가 번호로 응답하면 해당 줄의 파일 경로를 추출해 아래 명령을 실행한다:
    ```bash
-   python3 ~/.claude/scripts/harness-review.py <파일경로>
+   python3 "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/scripts/harness-review.py" <파일경로>
    ```
 4. 분석 리포트를 출력 규칙에 따라 그대로 출력한다.
 

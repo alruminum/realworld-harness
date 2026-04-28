@@ -6,8 +6,8 @@ classify-miss-report.py — fast_classify 미스 분석
 fast_classify에 추가할 패턴 후보를 추출한다.
 
 사용법:
-  python3 ~/.claude/scripts/classify-miss-report.py
-  python3 ~/.claude/scripts/classify-miss-report.py /path/to/harness-router.log
+  python3 "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/scripts/classify-miss-report.py"
+  python3 "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/scripts/classify-miss-report.py" /path/to/harness-router.log
 """
 import re
 import sys

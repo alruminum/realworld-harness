@@ -196,7 +196,7 @@ cwd가 화이트리스트 경로 또는 그 서브디렉토리 → True
 
 | 동작 | 방법 |
 |---|---|
-| 등록 | 프로젝트 루트에서 `bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-rwh.sh"` (개발 폴백: `bash ~/.claude/scripts/setup-rwh.sh`) |
+| 등록 | 프로젝트 루트에서 `bash "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/scripts/setup-rwh.sh"` |
 | 일괄 보기 | `harness-list` 스킬 |
 | 활성화 | `harness-enable` 스킬 |
 | 해제 | `harness-disable` 스킬 |

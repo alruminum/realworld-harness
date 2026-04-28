@@ -46,15 +46,15 @@ argument-hint: ""
 
 ---
 
-## Step 1 — setup-harness.sh 실행
+## Step 1 — setup-rwh.sh 실행
 
 ```bash
-bash ~/.claude/setup-harness.sh [--doc-name <DOC_NAME>] [--repo <REPO>]
+bash "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/scripts/setup-rwh.sh" [--doc-name <DOC_NAME>] [--repo <REPO>]
 ```
 
 예시:
 ```bash
-bash ~/.claude/setup-harness.sh --doc-name domain-logic --repo myorg/my-app
+bash "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/scripts/setup-rwh.sh" --doc-name domain-logic --repo myorg/my-app
 ```
 
 이 스크립트가 한 번에 처리하는 것:
