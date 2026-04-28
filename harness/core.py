@@ -608,9 +608,11 @@ MARKER_ALIASES = {
     "REJECT": "FAIL",
     "REJECTED": "FAIL",
     "NOT_APPROVED": "FAIL",
-    # 주의: LGTM 단독은 alias 안 함 — pr-reviewer 의 정식 마커이기도 해서 충돌.
-    # plan-reviewer 가 bare LGTM emit 시 agent.md 강화로 1차 방어, 정식
-    # PLAN_REVIEW_LGTM 변형으로 emit 시 위 alias 가 2차 방어.
+    # bare LGTM — pr-reviewer 정식 마커. parse_marker 1차(canonical) 가 alias 보다
+    # 우선이라 pr-reviewer 호출(expected_set 에 LGTM 포함)에선 1차 매치 → alias 우회됨.
+    # plan-reviewer 호출(expected_set 에 LGTM 미포함)에선 1차/2차 fail → alias 진입 →
+    # PLAN_REVIEW_PASS 흡수 (jajang 2026-04-29 #133 사고 후속).
+    "LGTM": "PLAN_REVIEW_PASS",
 }
 
 
