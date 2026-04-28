@@ -48,6 +48,8 @@
 | `HARNESS-CHG-20260428-04` | 2026-04-28 | infra | [4.1] `~/.claude/harness/executor.py` hardcode 제거 — 6 파일 13 위치 → `${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/harness/executor.py` (jajang 실제 사례에서 No such file or directory 발생) | — |
 | `HARNESS-CHG-20260428-05` | 2026-04-28 | infra | [5.1] `diagnose_marker_miss()` 헬퍼 + 9 사이트 적용 (impl_router 2 + plan_loop 1 + core 6 validator) — 마커 미감지 시 arch_out 마지막 500자 진단 로그 | — |
 | `HARNESS-CHG-20260428-05` | 2026-04-28 | agent | [5.2] architect sub-docs 출력 형식 canonical — light-plan/module-plan/task-decompose `---MARKER:X---` 정형 마커로 통일 + preamble 자가-체크 룰 추가 | — |
+| `HARNESS-CHG-20260428-06` | 2026-04-28 | infra | [6.1] AI 패닉 회로 차단 — agent-gate.py + plugin-write-guard.py deny 메시지에 명시적 복구 가이드 (executor 재실행 / 새 세션 / 유저 보고 — 인프라 inspect/edit 금지) | — |
+| `HARNESS-CHG-20260428-06` | 2026-04-28 | infra | [6.2] executor.py stale lock 자동 정리 visibility — silent unlink → 명시적 메시지 ("직전 실행 PID=X 죽음, 재진행합니다") | — |
 
 ---
 
@@ -393,6 +395,51 @@
 - jajang 사용자 사례 (2026-04-28) — `executor.py` 두 번째 시도 후 SPEC_GAP_ESCALATE
 - `HARNESS-CHG-20260428-04` (PR #4) — 같은 사례의 첫 단계 (path hardcode) 해소
 - 후속: `HARNESS-CHG-20260428-06` (예정) — 프로세스 hung/crashed 복구 가시성 (B-3)
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-06` — 2026-04-28 — 프로세스 hung/crashed 복구 가시성 (B-3)
+
+**Type**: infra (hooks + executor)
+
+**Branch**: `harness/recovery-visibility`
+
+**Issue**: jajang 사례 — executor 가 validator agent_start 직후 외부 종료(SIGKILL/세션 disconnect 추정). AI 가 *복구 경로 안내 없음* + *stale state silent recovery* 때문에 패닉 → engineer 직접 호출 시도 (HARNESS_ONLY_AGENTS 차단) → 인프라 파일 inspect/edit 시도 (plugin-write-guard 차단) → 유저 좌절 ("니가 인프라를 왜 건들어").
+
+**현 시스템 분석**:
+- executor.py 의 lock 파일 PID 검사 + 자동 정리 로직은 *이미 작동* (line 130-144)
+- 외부 SIGKILL 후 재진입 시 자동 복구 가능
+- 그러나 정리가 *silent* — AI 는 막힌 게 풀린 줄 모름
+- HARNESS_ONLY_AGENTS / plugin-write-guard 차단도 *대안 안내 없음* — AI 가 다른 우회 시도
+
+**[6.1] 패닉 회로 차단 (3 deny 메시지)**:
+- `hooks/agent-gate.py` HARNESS_ONLY_AGENTS deny — "🚫 패닉 회로" 섹션 추가:
+  1. executor.py 재실행 (`--force-retry` 옵션으로 cooldown 우회)
+  2. 새 셸/세션 (stale 상태 자동 복구)
+  3. 그래도 막히면 유저 보고 — 메인 Claude 영역 아님
+- `hooks/plugin-write-guard.py` deny — 동일 패턴 + 정상 경로 안내 (커스텀 스킬은 ~/.claude/commands/, 에이전트 컨텍스트는 .claude/agent-config/, 우회 필요시 `export CLAUDE_ALLOW_PLUGIN_EDIT=1`)
+
+**[6.2] stale lock 가시성**:
+- `harness/executor.py:130-144` lock 파일 PID 검사 결과 죽은 PID → 기존: `lock_file.unlink(missing_ok=True)` silent. 신규: `print("[HARNESS] 직전 실행 PID=X 죽음 — stale lock 자동 정리 (마지막 heartbeat N초 전). 재진행합니다.")`
+- 손상된 lock 파일도 동일 — silent → 명시 메시지
+
+**비변경 (의도)**:
+- `agent_call` watchdog 자체 — 이미 timeout 시 subprocess.terminate + kill. 정상 동작
+- atexit + SIGTERM/SIGINT 핸들러 — 이미 cleanup 등록. 정상 동작
+- 이슈 lock heartbeat — 이미 존재. 별도 추가 불필요
+
+**검증**:
+- python3 -m py_compile harness/executor.py hooks/agent-gate.py hooks/plugin-write-guard.py — OK
+- bash scripts/smoke-test.sh — 56/56 PASS (회귀 없음)
+- python3 -m unittest tests.pytest.test_tracker — 33/33 OK
+
+**Linked**:
+- jajang 사례 (2026-04-28): "니가 인프라를 왜 건들어" 유저 차단
+- `HARNESS-CHG-20260428-04` (PR #4): 같은 사례 1단계 (path)
+- `HARNESS-CHG-20260428-05` (PR #5): 같은 사례 2단계 (marker)
+- 본 PR: 같은 사례 3단계 (process recovery panic)
 
 **Exception**: —
 

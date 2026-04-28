@@ -138,9 +138,17 @@ def main() -> None:
                     print("동시 실행은 지원하지 않습니다. /harness-kill로 기존 실행을 중단하거나 완료를 기다리세요.")
                     sys.exit(1)
                 except OSError:
-                    # PID 죽었음 — stale lock 정리
+                    # PID 죽었음 — stale lock 정리. 외부 SIGKILL/세션 종료 후 재진입 케이스.
+                    # 상태 추적 가시성 (HARNESS-CHG-20260428-06): 이전엔 silent unlink 라
+                    # AI 가 "왜 막혀있지?" 패닉으로 우회 시도 → 본 메시지로 정상 복구임을 명시.
+                    _started = data.get("started", 0)
+                    _hb = data.get("heartbeat", 0)
+                    _stale_secs = int(time.time()) - max(_started, _hb)
+                    print(f"[HARNESS] 직전 실행 PID={existing_pid} 죽음 — stale lock 자동 정리 "
+                          f"(마지막 heartbeat {_stale_secs}초 전). 재진행합니다.")
                     lock_file.unlink(missing_ok=True)
         except (json.JSONDecodeError, OSError):
+            print(f"[HARNESS] lock 파일 손상 — 자동 정리 후 재진행: {lock_file}")
             lock_file.unlink(missing_ok=True)
 
     lock_started = int(time.time())
