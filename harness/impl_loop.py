@@ -488,6 +488,34 @@ def run_simple(
         )
         if not check_ok:
             error_trace = check_err or "automated_checks FAIL"
+            # no_changes 는 별도 fail_type — boundary 차단 / missing impl / 컨텍스트
+            # 손실 등 같은 engineer 더 호출해도 안 풀리는 카테고리. retry 무의미하므로
+            # 1회만에 즉시 IMPLEMENTATION_ESCALATE (autocheck_fail circuit breaker
+            # 의 2회 윈도우 기다리지 않음 — attempt + 비용 폭주 방지).
+            if check_err.startswith("no_changes:"):
+                fail_type = "no_changes"
+                log_decision("fail_type", fail_type,
+                             "no_changes — boundary block / missing impl 의심, retry 무의미",
+                             run_logger, attempt)
+                append_failure(impl_file, fail_type, error_trace, state_dir, prefix)
+                try:
+                    shutil.copy2(
+                        str(state_dir.path / f"{prefix}_autocheck_fail.txt"),
+                        str(attempt_dir / "autocheck.log"),
+                    )
+                except OSError:
+                    pass
+                save_impl_meta(attempt_dir, attempt, "FAIL", depth, fail_type,
+                               "engineer 변경 없음 — boundary block / missing impl / 컨텍스트 손실 의심. 재시도 무의미.")
+                rollback_attempt(attempt, run_logger)
+                state_dir.flag_rm(Flag.PLAN_VALIDATION_PASSED)
+                os.environ["HARNESS_RESULT"] = "IMPLEMENTATION_ESCALATE"
+                hlog_fn("=== no_changes → IMPLEMENTATION_ESCALATE (1회만, retry 스킵) ===")
+                print("IMPLEMENTATION_ESCALATE (no_changes)")
+                print(f"branch: {feature_branch}")
+                record_escalate(state_dir, impl_file, fail_type)
+                run_logger.write_run_end("IMPLEMENTATION_ESCALATE", feature_branch, issue_num)
+                return "IMPLEMENTATION_ESCALATE"
             fail_type = "autocheck_fail"
             log_decision("fail_type", fail_type, "automated_checks failed", run_logger, attempt)
             append_failure(impl_file, "autocheck_fail", error_trace, state_dir, prefix)
@@ -924,8 +952,12 @@ def _run_std_deep(
         os.environ["HARNESS_HIST_DIR"] = str(attempt_dir)
         prune_history(str(loop_out_dir))
 
-        # ── TDD Phase: test-engineer 선행 (attempt 0 + test_command + std/deep) ──
-        _tdd_active = (attempt == 0 and bool(config.test_command) and depth in ("std", "deep"))
+        # ── TDD Phase: test-engineer 선행 (attempt 0 + std/deep) ──
+        # test_command 부재가 TDD 자체를 끄지 않는다 — 테스트 작성은 회귀 방어 +
+        # impl 명세 검증 목적도 있음. config.test_command 가 있을 때만 RED/GREEN
+        # 실측 게이트가 추가될 뿐. 폴백(engineer→test-engineer) 분기 제거됨
+        # (TDD 룰 위반: test 먼저 → code 뒤).
+        _tdd_active = (attempt == 0 and depth in ("std", "deep"))
         if _tdd_active:
             log_phase("test-engineer-tdd", run_logger, attempt)
             hlog_fn(f"test-engineer TDD 시작 (attempt=0, depth={depth})")
@@ -1173,6 +1205,29 @@ def _run_std_deep(
         check_ok, check_err = run_automated_checks(impl_file, config, state_dir, prefix, cwd=work_cwd)
         if not check_ok:
             error_trace = check_err or "automated_checks FAIL"
+            # no_changes 별도 fail_type — retry 무의미하므로 즉시 IMPLEMENTATION_ESCALATE.
+            # (run_simple 과 동일 패턴; 사유는 거기 주석 참조).
+            if check_err.startswith("no_changes:"):
+                fail_type = "no_changes"
+                log_decision("fail_type", fail_type,
+                             "no_changes — boundary block / missing impl 의심, retry 무의미",
+                             run_logger, attempt)
+                append_failure(impl_file, fail_type, error_trace, state_dir, prefix)
+                try:
+                    shutil.copy2(str(state_dir.path / f"{prefix}_autocheck_fail.txt"), str(attempt_dir / "autocheck.log"))
+                except OSError:
+                    pass
+                save_impl_meta(attempt_dir, attempt, "FAIL", depth, fail_type,
+                               "engineer 변경 없음 — boundary block / missing impl / 컨텍스트 손실 의심. 재시도 무의미.")
+                rollback_attempt(attempt, run_logger)
+                state_dir.flag_rm(Flag.PLAN_VALIDATION_PASSED)
+                os.environ["HARNESS_RESULT"] = "IMPLEMENTATION_ESCALATE"
+                hlog_fn("=== no_changes → IMPLEMENTATION_ESCALATE (1회만, retry 스킵) ===")
+                print("IMPLEMENTATION_ESCALATE (no_changes)")
+                print(f"branch: {feature_branch}")
+                record_escalate(state_dir, impl_file, fail_type)
+                run_logger.write_run_end("IMPLEMENTATION_ESCALATE", feature_branch, issue_num)
+                return "IMPLEMENTATION_ESCALATE"
             fail_type = "autocheck_fail"
             log_decision("fail_type", fail_type, "automated_checks failed", run_logger, attempt)
             append_failure(impl_file, "autocheck_fail", error_trace, state_dir, prefix)
@@ -1201,82 +1256,12 @@ def _run_std_deep(
             run_logger.log_event({"event": "commit", "hash": early_commit, "attempt": attempt + 1, "t": int(time.time())})
             hlog_fn(f"early commit: {early_commit} (attempt={attempt + 1})")
 
-        # ── TDD 여부에 따라 test-engineer 처리 분기 ─────────────────
-        if _tdd_active or (attempt > 0 and depth in ("std", "deep")):
-            # TDD: test-engineer 이미 완료 (attempt 0) 또는 스킵 (attempt 1+)
-            # → 바로 vitest GREEN 확인으로 진행
-            hlog_fn("test-engineer 스킵 (TDD: 이미 완료 or attempt 1+)")
-        elif not config.test_command:
-            # test_command 미설정 시 기존 순서 폴백 (engineer → test-engineer)
-            _eng_output = ""
-            try:
-                _eng_output = Path(str(state_dir.path / f"{prefix}_eng_out.txt")).read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                pass
-            _handoff_content = generate_handoff(
-                "engineer", "test-engineer", _eng_output,
-                impl_file, attempt, issue_num,
-                acceptance_criteria=extract_acceptance_criteria(impl_file),
-            )
-            _handoff_path = write_handoff(state_dir, prefix, attempt, "engineer", "test-engineer", _handoff_content)
-            run_logger.log_event({
-                "event": "handoff", "from": "engineer", "to": "test-engineer",
-                "t": int(time.time()),
-            })
-
-            r_changed = subprocess.run(["git", "diff", "HEAD~1", "--name-only"], capture_output=True, text=True, timeout=5)
-            if r_changed.returncode != 0:
-                r_changed = subprocess.run(["git", "status", "--short"], capture_output=True, text=True, timeout=5)
-                changed_files_str = " ".join(
-                    line.split(None, 1)[1] for line in r_changed.stdout.splitlines()
-                    if re.match(r"^ M|^M |^A ", line)
-                )
-            else:
-                changed_files_str = " ".join(r_changed.stdout.strip().splitlines())
-
-            log_phase("test-engineer", run_logger, attempt)
-            hlog_fn(f"test-engineer 시작 (depth={depth}, timeout=900s)")
-            kill_check(state_dir)
-            hud.agent_start("test-engineer")
-
-            _te_handoff_hint = f"\n인수인계 문서: {_handoff_path}" if _handoff_path else ""
-            # test_command 없는 폴백: TDD 모드로 호출하되 실행 금지 지시
-            te_prompt = (
-                f"@MODE:TEST_ENGINEER:TDD\n"
-                f'@PARAMS: {{ "impl_path": "{impl_file}" }}\n\n'
-                f"[지시] impl + 구현 코드 기반으로 테스트 작성. 테스트 실행은 하지 마라 (test_command 미설정).\n"
-                f"수정된 파일: {changed_files_str}\n"
-                f"issue: {format_ref(issue_num)}"
-                f"{_te_handoff_hint}"
-            )
-
-            # fallback: test-engineer 호출 (test_command 없을 때)
-            te_out = str(state_dir.path / f"{prefix}_te_out.txt")
-            agent_exit = agent_call("test-engineer", 900, te_prompt, te_out, run_logger, config, str(attempt_dir))
-            hlog_fn(f"test-engineer 종료 (exit={agent_exit})")
-            total_cost = budget_check("test-engineer", te_out, total_cost, config.max_total_cost, state_dir, prefix, config=config)
-
-            if not check_agent_output("test-engineer", te_out):
-                fail_type = "test_fail"
-                error_trace = f"test-engineer agent produced no output (exit={agent_exit})"
-                append_failure(impl_file, fail_type, error_trace, state_dir, prefix)
-                rollback_attempt(attempt, run_logger)
-                attempt += 1
-                continue
-
-            # test_command 없으므로 마커 기반 판정
-            te_marker = parse_marker(te_out, "TESTS_PASS|TESTS_FAIL|TESTS_WRITTEN")
-            if te_marker == "TESTS_FAIL":
-                fail_type = "test_fail"
-                te_content = Path(te_out).read_text(encoding="utf-8", errors="replace")
-                log_decision("fail_type", fail_type, "test-engineer reported TESTS_FAIL", run_logger, attempt)
-                append_failure(impl_file, "test_fail", te_content, state_dir, prefix)
-                rollback_attempt(attempt, run_logger)
-                attempt += 1
-                continue
-            state_dir.flag_touch(Flag.TEST_ENGINEER_PASSED)
-            hud.agent_done("test-engineer", 0, 0.0)
-            print("[HARNESS] test-engineer PASS (fallback)")
+        # ── test-engineer 단계: TDD phase 에서 attempt 0 에 이미 선행 완료, ──
+        # ── attempt 1+ 는 위 elif 에서 스킵 처리됨. 여기선 로그만 남김. ──
+        # 옛 폴백(engineer → test-engineer, test_command 미설정 시) 제거 — TDD
+        # 룰("test 먼저, code 뒤") 위반이라 jajang 류 std/deep 프로젝트에서
+        # engineer 가 test-engineer 보다 먼저 실행되던 사고 차단.
+        hlog_fn("test-engineer 스킵 (TDD: attempt 0 선행 완료 or attempt 1+ 재사용)")
 
         # ── GREEN 확인 (vitest run) ───────────────────────────────
         import shlex as _shlex
