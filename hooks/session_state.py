@@ -288,7 +288,9 @@ def get_live(session_id: str, project_root: Optional[Path] = None) -> Dict[str, 
 
 
 def update_live(session_id: str, project_root: Optional[Path] = None, **fields: Any) -> None:
-    """read → merge → atomic write. 값이 None이면 필드 삭제."""
+    """read → merge → atomic write. 값이 None이면 필드 삭제.
+    쓰기 실패 시 stderr 경고 표준화 (W4 #1 — silent dependency cascade 방지).
+    """
     if not valid_session_id(session_id):
         return
     current = get_live(session_id, project_root)
@@ -298,12 +300,24 @@ def update_live(session_id: str, project_root: Optional[Path] = None, **fields: 
             current.pop(k, None)
         else:
             current[k] = v
-    atomic_write_json(
-        live_path(session_id, project_root),
-        current,
-        mode="session",
-        session_id=session_id,
-    )
+    try:
+        atomic_write_json(
+            live_path(session_id, project_root),
+            current,
+            mode="session",
+            session_id=session_id,
+        )
+    except Exception as e:
+        import sys as _sys
+        _sys.stderr.write(
+            f"[session_state] WARN: live.json write failed (sid={session_id[:8]}…): "
+            f"{type(e).__name__}: {e}\n"
+            f"  → downstream guards (agent-boundary/issue-gate/commit-gate/ralph-session-stop) "
+            f"may false-block or miss state (cross-guard cascade risk).\n"
+            f"  → check: ls -la .claude/harness-state/.sessions/{session_id}/live.json\n"
+            f"  → check: df -h .claude/harness-state/  # 디스크 풀 확인\n"
+        )
+        raise
 
 
 def clear_live_field(

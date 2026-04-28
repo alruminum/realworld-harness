@@ -30,6 +30,14 @@ from pathlib import Path
 from typing import Optional, Protocol
 
 
+# ── Mutating subcommands (SSOT — commit-gate Gate 1 위임 대상) ──
+# 새 subcommand 추가 시 본 frozenset만 갱신하면 commit-gate.py 자동 흡수 (drift 0).
+# Phase 2 W2 (HARNESS-CHG Issue #13).
+MUTATING_SUBCOMMANDS: frozenset = frozenset({
+    "create-issue",
+    "comment",
+})
+
 # ── ID 파싱/표현 ──
 
 @dataclass(frozen=True)

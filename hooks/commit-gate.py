@@ -20,6 +20,62 @@ import session_state as ss
 PREFIX = get_prefix()
 
 
+def _matches_tracker_mutate(cmd: str) -> bool:
+    """harness.tracker MUTATING_SUBCOMMANDS 의 동적 매칭.
+    v1 fallback: 정적 (create-issue|comment) regex.
+    §1.2 — Phase 2 W2.
+    """
+    if os.environ.get("HARNESS_GUARD_V2_COMMIT_GATE") != "1":
+        # v1 동작 (line 55-56 그대로)
+        return bool(
+            re.search(r"harness\.tracker\s+(create-issue|comment)", cmd)
+            or re.search(r"harness/tracker\.py\s+(create-issue|comment)", cmd)
+        )
+    try:
+        from harness.tracker import MUTATING_SUBCOMMANDS  # §1.8 신설
+    except ImportError:
+        sys.stderr.write("[commit-gate] WARN: tracker.MUTATING_SUBCOMMANDS import failed; v1 fallback\n")
+        return bool(re.search(r"harness\.tracker\s+(create-issue|comment)", cmd))
+    if not MUTATING_SUBCOMMANDS:
+        sys.stderr.write("[commit-gate] WARN: MUTATING_SUBCOMMANDS empty; v1 fallback\n")
+        return bool(re.search(r"harness\.tracker\s+(create-issue|comment)", cmd))
+    sub_pat = "|".join(re.escape(s) for s in MUTATING_SUBCOMMANDS)
+    return bool(
+        re.search(rf"harness\.tracker\s+({sub_pat})", cmd)
+        or re.search(rf"harness/tracker\.py\s+({sub_pat})", cmd)
+    )
+
+
+def _has_engineer_change(staged: str) -> bool:
+    """staged 파일이 engineer_scope 패턴 중 하나라도 매치하는지.
+    v1: 정적 ^src/. v2: harness_common._load_engineer_scope() 위임.
+    §1.2 / §4.8 — 두 flag 중 하나라도 활성이면 V2 동작.
+    """
+    v2_on = (
+        os.environ.get("HARNESS_GUARD_V2_COMMIT_GATE") == "1"
+        or os.environ.get("HARNESS_GUARD_V2_AGENT_BOUNDARY") == "1"
+        or os.environ.get("HARNESS_GUARD_V2_ALL") == "1"
+    )
+    if not v2_on:
+        return bool(re.search(r"^src/", staged, re.MULTILINE))
+    try:
+        from harness_common import _load_engineer_scope  # §1.8
+        patterns = _load_engineer_scope()
+    except Exception as e:
+        sys.stderr.write(f"[commit-gate] WARN: engineer_scope load failed ({e}); v1 fallback\n")
+        return bool(re.search(r"^src/", staged, re.MULTILINE))
+    if not patterns:
+        sys.stderr.write("[commit-gate] WARN: engineer_scope empty; v1 fallback ^src/\n")
+        return bool(re.search(r"^src/", staged, re.MULTILINE))
+    # regex 컴파일 실패 방어 (§4.2)
+    try:
+        combined_re = re.compile("(" + "|".join(patterns) + ")", re.MULTILINE)
+    except re.error as e:
+        sys.stderr.write(f"[commit-gate] WARN: engineer_scope regex invalid ({e}); v1 fallback ^src/\n")
+        combined_re = re.compile(r"^src/", re.MULTILINE)
+    return bool(combined_re.search(staged))
+
+
 def _is_issue_creator_active(stdin_data=None):
     """Phase 3: live.json 단일 소스로 판정.
     ISSUE_CREATORS(qa, designer, architect, product-planner) 중 하나라도 활성이면 True.
@@ -52,17 +108,32 @@ def main():
         or re.search(r"gh\s+api\s+.*issues.*--method\s+POST", cmd)
         or re.search(r"gh\s+api\s+.*issues.*-X\s+(POST|PATCH)", cmd)
         or re.search(r"gh\s+api\s+.*issues/\d+.*-X\s+PATCH", cmd)
-        or re.search(r"harness\.tracker\s+(create-issue|comment)", cmd)
-        or re.search(r"harness/tracker\.py\s+(create-issue|comment)", cmd)
+        or _matches_tracker_mutate(cmd)  # v1/v2 모두 통과 (§1.2)
     )
     if _IS_GH_ISSUE_MUTATE and os.environ.get("HARNESS_INTERNAL") != "1" and not _is_issue_creator_active(d):
-        deny(
-            "❌ [hooks/commit-gate.py] 추적 이슈 변경 명령 직접 호출 금지.\n"
-            "이슈 생성/수정은 QA 에이전트가, 디자인 이슈는 designer 에이전트가 처리한다.\n"
-            "차단된 명령 형식: gh issue create/edit, gh api issues POST/PATCH, "
-            "python3 -m harness.tracker create-issue|comment.\n"
-            f"올바른 흐름: /qa 스킬 → QA 에이전트 분석·이슈 생성/수정 → python3 executor.py impl --issue <REF> --prefix {PREFIX}"
-        )
+        # V2 deny enrichment (§1.2 / W4)
+        if os.environ.get("HARNESS_GUARD_V2_COMMIT_GATE") == "1":
+            try:
+                from harness.tracker import MUTATING_SUBCOMMANDS as _msc
+                _msc_listed = ", ".join(sorted(_msc))
+            except Exception:
+                _msc_listed = "create-issue, comment (static)"
+            deny(
+                "❌ [hooks/commit-gate.py] 추적 이슈 변경 명령 직접 호출 금지.\n"
+                "이슈 생성/수정은 QA 에이전트가, 디자인 이슈는 designer 에이전트가 처리한다.\n"
+                "차단된 명령 형식: gh issue create/edit, gh api issues POST/PATCH, "
+                "python3 -m harness.tracker create-issue|comment.\n"
+                f"올바른 흐름: /qa 스킬 → QA 에이전트 분석·이슈 생성/수정 → python3 executor.py impl --issue <REF> --prefix {PREFIX}\n"
+                f"진단: cmd matched MUTATING_SUBCOMMANDS=[{_msc_listed}] | tracker source: V2"
+            )
+        else:
+            deny(
+                "❌ [hooks/commit-gate.py] 추적 이슈 변경 명령 직접 호출 금지.\n"
+                "이슈 생성/수정은 QA 에이전트가, 디자인 이슈는 designer 에이전트가 처리한다.\n"
+                "차단된 명령 형식: gh issue create/edit, gh api issues POST/PATCH, "
+                "python3 -m harness.tracker create-issue|comment.\n"
+                f"올바른 흐름: /qa 스킬 → QA 에이전트 분석·이슈 생성/수정 → python3 executor.py impl --issue <REF> --prefix {PREFIX}"
+            )
 
     # ── Gate 2: (removed in v6 — bugfix 모드 제거에 따라 is_bug 게이트 삭제)
 
@@ -112,7 +183,7 @@ def main():
     except Exception:
         sys.exit(0)
 
-    has_src = bool(re.search(r"^src/", staged, re.MULTILINE))
+    has_src = _has_engineer_change(staged)  # §1.2 — v1/v2 분기 헬퍼
     if not has_src:
         sys.exit(0)
 
@@ -131,7 +202,19 @@ def main():
 
     # src 변경이 있으면 LGTM 필요
     if not os.path.exists(f"{get_flags_dir()}/{PREFIX}_{FLAGS.PR_REVIEWER_LGTM}"):
-        deny(f"❌ [hooks/commit-gate.py] git commit 전 pr-reviewer LGTM 필요. {get_flags_dir()}/{PREFIX}_{FLAGS.PR_REVIEWER_LGTM} 없음.")
+        # V2 deny enrichment — §1.2 / W4
+        if os.environ.get("HARNESS_GUARD_V2_COMMIT_GATE") == "1" or os.environ.get("HARNESS_GUARD_V2_AGENT_BOUNDARY") == "1":
+            _scope_src = "harness.config.json (V2)" if (
+                os.environ.get("HARNESS_GUARD_V2_COMMIT_GATE") == "1"
+                or os.environ.get("HARNESS_GUARD_V2_AGENT_BOUNDARY") == "1"
+            ) else "static fallback"
+            deny(
+                f"❌ [hooks/commit-gate.py] git commit 전 pr-reviewer LGTM 필요. "
+                f"{get_flags_dir()}/{PREFIX}_{FLAGS.PR_REVIEWER_LGTM} 없음.\n"
+                f"진단: engineer_scope source: {_scope_src} | matched_pattern: engineer_scope"
+            )
+        else:
+            deny(f"❌ [hooks/commit-gate.py] git commit 전 pr-reviewer LGTM 필요. {get_flags_dir()}/{PREFIX}_{FLAGS.PR_REVIEWER_LGTM} 없음.")
 
     sys.exit(0)
 

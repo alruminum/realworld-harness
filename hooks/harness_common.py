@@ -265,3 +265,131 @@ def flag_path(prefix, name):
 def flag_exists(prefix, name):
     """플래그 파일 존재 여부."""
     return os.path.exists(flag_path(prefix, name))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 2 W2/W4 헬퍼 (HARNESS-CHG Issue #13 — Guard Model Realignment)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── engineer_scope 로더 (agent-boundary + commit-gate 공유) ──────────────────
+_ENGINEER_SCOPE_CACHE: "list[str] | None" = None  # per-process 캐시
+
+# 정적 default — agent-boundary.ALLOW_MATRIX["engineer"] 와 동등.
+# v1 동작 회귀 검증을 위해 본 리스트만으로 기존 매트릭스가 재현 가능해야 함.
+_STATIC_ENGINEER_SCOPE: "list[str]" = [
+    r'(^|/)src/',
+    r'(^|/)apps/[^/]+/src/',
+    r'(^|/)apps/[^/]+/app/',
+    r'(^|/)apps/[^/]+/alembic/',
+    r'(^|/)packages/[^/]+/src/',
+    r'(^|/)apps/[^/]+/[^/]+\.toml$',
+    r'(^|/)apps/[^/]+/[^/]+\.cfg$',
+]
+
+
+def _load_engineer_scope() -> "list[str]":
+    """engineer 활성 시 ALLOW_MATRIX["engineer"] 가 사용할 패턴 리스트.
+    agent-boundary 와 commit-gate 가 같은 source 에서 파생.
+
+    HARNESS_GUARD_V2_AGENT_BOUNDARY 또는 HARNESS_GUARD_V2_COMMIT_GATE 중 하나라도
+    활성이면 config 로드 시도. 둘 다 미설정이면 정적 fallback (per-process 캐시).
+    """
+    global _ENGINEER_SCOPE_CACHE
+    if _ENGINEER_SCOPE_CACHE is not None:
+        return _ENGINEER_SCOPE_CACHE
+    v2_any = (
+        os.environ.get("HARNESS_GUARD_V2_AGENT_BOUNDARY") == "1"
+        or os.environ.get("HARNESS_GUARD_V2_COMMIT_GATE") == "1"
+        or os.environ.get("HARNESS_GUARD_V2_ALL") == "1"
+    )
+    if not v2_any:
+        _ENGINEER_SCOPE_CACHE = list(_STATIC_ENGINEER_SCOPE)
+        return _ENGINEER_SCOPE_CACHE
+    try:
+        # PLUGIN_ROOT 의 harness/config.py 동적 로드
+        plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+        if plugin_root and plugin_root not in sys.path:
+            sys.path.insert(0, plugin_root)
+        from harness.config import load_config  # type: ignore
+        cfg = load_config()
+        scope = list(cfg.engineer_scope) if cfg.engineer_scope else []
+    except Exception as e:
+        sys.stderr.write(
+            f"[harness_common] WARN: engineer_scope config load failed ({e}); fallback static\n"
+        )
+        scope = []
+    if not scope:
+        scope = list(_STATIC_ENGINEER_SCOPE)
+    _ENGINEER_SCOPE_CACHE = scope
+    return _ENGINEER_SCOPE_CACHE
+
+
+# ── auto_gc_stale_flag — skill-stop-protect 패턴 일반화 ─────────────────────
+def auto_gc_stale_flag(flag_p: object, ttl_sec: int, label: str) -> bool:
+    """flag mtime 기반 age check + auto-GC.
+
+    Args:
+      flag_p: pathlib.Path — flag 파일 경로
+      ttl_sec: int — TTL (초). default 6h (21600).
+      label: str — stderr/log 진단용 가드 이름 (e.g. "agent-gate")
+
+    Returns: fresh 여부 (False 면 stale 또는 부재).
+    skill-stop-protect 의 auto_release 패턴 일반화.
+    """
+    import time as _time
+    from pathlib import Path as _Path
+    flag_p = _Path(flag_p)
+    if not flag_p.exists():
+        return False
+    try:
+        age = _time.time() - flag_p.stat().st_mtime
+    except OSError:
+        return False
+    if age > ttl_sec:
+        try:
+            flag_p.unlink()
+            sys.stderr.write(
+                f"[{label}] auto-GC stale flag {flag_p.name} "
+                f"(age={int(age)}s > ttl={ttl_sec}s)\n"
+            )
+            # 진단 jsonl
+            try:
+                import session_state as _ss  # type: ignore
+                log_dir = _ss.state_root() / ".logs"
+                log_dir.mkdir(exist_ok=True)
+                log_path = log_dir / f"{label}.jsonl"
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps({
+                        "ts": int(_time.time()),
+                        "guard": label,
+                        "event": "auto_gc",
+                        "flag": flag_p.name,
+                        "age": int(age),
+                        "ttl": ttl_sec,
+                    }, ensure_ascii=False) + "\n")
+            except Exception:
+                pass
+        except OSError:
+            pass
+        return False
+    return True
+
+
+# ── live.json round-trip canary (executor.py 진입 시 호출) ──────────────────
+def _verify_live_json_writable(session_id: str) -> "tuple[bool, str]":
+    """live.json 쓰기 가능 여부 사전 검증. Returns (ok, error_msg).
+    ok=False 면 caller 가 ESCALATE 결정. silent dependency cascade 사전 차단.
+    """
+    try:
+        import time as _time
+        import session_state as _ss  # type: ignore
+        canary = int(_time.time())
+        _ss.update_live(session_id, _harness_canary=canary)
+        # readback 검증 — atomic_write_json 후 directory fsync 까지 검증
+        live = _ss.get_live(session_id)
+        if live.get("_harness_canary") != canary:
+            return (False, f"canary mismatch: wrote {canary}, read {live.get('_harness_canary')}")
+        _ss.clear_live_field(session_id, "_harness_canary")
+        return (True, "")
+    except Exception as e:
+        return (False, f"{type(e).__name__}: {e}")

@@ -53,6 +53,10 @@ class HarnessConfig:
     agent_tiers: dict = field(default_factory=lambda: dict(DEFAULT_AGENT_TIERS))
     # agent name → tier 배정
     agent_tier_assignment: dict = field(default_factory=lambda: dict(DEFAULT_AGENT_TIER_ASSIGNMENT))
+    # engineer 활성 시 Write/Edit 허용 경로 패턴 (regex 문자열 목록).
+    # 빈 리스트(default) → agent-boundary._STATIC_ENGINEER_SCOPE 폴백 (회귀 0).
+    # Phase 2 W2 — monorepo 동적화 (HARNESS-CHG Issue #13).
+    engineer_scope: list = field(default_factory=list)
 
 
 def get_agent_model(agent_name: str, config: HarnessConfig) -> str:
@@ -114,6 +118,7 @@ def load_config(project_root: Path | None = None) -> HarnessConfig:
         second_reviewer_model=data.get("second_reviewer_model", ""),
         agent_tiers=merged_tiers,
         agent_tier_assignment=merged_assignment,
+        engineer_scope=data.get("engineer_scope", []) if isinstance(data.get("engineer_scope", []), list) else [],
     )
 
 

@@ -18,7 +18,9 @@ lifecycle을 관리한다.
 from __future__ import annotations
 
 import json
+import os
 import sys
+import time
 from pathlib import Path
 
 HOOKS_DIR = Path(__file__).resolve().parent
@@ -38,15 +40,37 @@ def _read_stdin() -> dict:
         return {}
 
 
+def _log_diag(event: dict) -> None:
+    """진단 집계 — harness-state/.logs/skill-gate.jsonl
+    §1.4 — Phase 2 W2/W4.
+    """
+    try:
+        log_dir = ss.state_root() / ".logs"
+        log_dir.mkdir(exist_ok=True)
+        log_path = log_dir / "skill-gate.jsonl"
+        event["ts"] = int(time.time())
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 def _skill_name(d: dict) -> str:
-    """Skill 툴 입력에서 스킬 이름 추출. 가능한 키 변형 모두 시도."""
+    """Skill 툴 입력에서 스킬 이름 추출. 가능한 키 변형 모두 시도.
+    §1.4: 키 변형 silent 실패를 V2 활성 시 진단.
+    """
     inp = d.get("tool_input") or {}
-    return (
-        inp.get("skill")
-        or inp.get("skillName")
-        or inp.get("name")
-        or ""
-    )
+    for key in ("skill", "skillName", "name"):
+        v = inp.get(key)
+        if v:
+            return v
+    # v2: 이름 없음을 진단 — 메인 Claude Skill 호출 형식 변경 시 silent missing 차단
+    if os.environ.get("HARNESS_GUARD_V2_SKILL_GATE") == "1":
+        sys.stderr.write(
+            f"[skill-gate] WARN: Skill tool_input missing skill name. keys={list(inp.keys())}\n"
+        )
+        _log_diag({"event": "skill_name_missing", "tool_input_keys": list(inp.keys())})
+    return ""
 
 
 def main() -> int:
@@ -62,9 +86,23 @@ def main() -> int:
         return 0
 
     level = get_skill_level(name)
+    v2_on = os.environ.get("HARNESS_GUARD_V2_SKILL_GATE") == "1"
     try:
         ss.set_active_skill(sid, name, level)
-    except Exception:
+        # v2 success 진단 — 5번째 위험 (silent missing) 사전 가시화
+        if v2_on:
+            _log_diag({"event": "set_skill_ok", "sid": sid, "skill": name, "level": level})
+    except Exception as e:
+        # v1: silent pass (regression 0).
+        # v2: stderr 경고 + diag log. passive recorder 본질 유지 (차단 없음).
+        if v2_on:
+            sys.stderr.write(
+                f"[skill-gate] WARN: set_active_skill failed (sid={sid[:8]}…, skill={name}): {e}\n"
+                f"  → downstream guards (agent-boundary/issue-gate/commit-gate) may false-block.\n"
+                f"  → check live.json writability: ls -la .claude/harness-state/.sessions/{sid}/live.json\n"
+            )
+            _log_diag({"event": "set_skill_fail", "sid": sid, "skill": name, "err": str(e)})
+        # silent pass 자체는 v1/v2 동일 — 본 가드는 deny 권한 없음
         pass
     return 0
 

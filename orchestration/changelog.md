@@ -57,6 +57,7 @@
 | `HARNESS-CHG-20260428-11` | 2026-04-28 | infra | [11.1] `--force-retry` 확장 — escalate_history 도 청소 (false failure 누적 후 retry 시 manual JSON 편집 불필요) + auto_spec_gap 메시지에 복구 안내 추가 | — |
 | `HARNESS-CHG-20260428-12` | 2026-04-28 | infra | [12.1] PLUGIN_ROOT `__file__` self-detect — env 미설정 시 `~/.claude` 폴백(post-migration 무효) 대신 `${plugin}/harness/core.py` 위치에서 root 추론. session_state import 안정화 (jajang 사례 — bash `${VAR:-...}` path 확장은 env export 아님) | — |
 | `HARNESS-CHG-20260428-13.1` | 2026-04-28 | docs | Phase 2 Iter 1 (W1+W3) — 가드 카탈로그 7개 (5개 W2 포함 / 2개 제외: issue-gate, plugin-write-guard) + spec §0 [invariant-shift] PR 토큰 정식 도입 + §3 I-1/I-2/I-7/I-9 보호 대상↔모델 분리 + architecture §5.6/§5.7 Layered Defense + §5.8 Staged Rollout + rationale 4섹션 + 5번째 위험 패턴 (Cross-guard Silent Dependency Chain) | — |
+| `HARNESS-CHG-20260428-13.2` | 2026-04-28 | infra | Phase 2 Iter 2 (W2+W4) — 5 가드 + 1 ralph fallback + Layered Defense 보강. config.py engineer_scope 필드 + tracker.MUTATING_SUBCOMMANDS SSOT + harness_common 4개 헬퍼(_load_engineer_scope/auto_gc_stale_flag/_verify_live_json_writable/_STATIC_ENGINEER_SCOPE) + session_state.update_live 쓰기 실패 stderr 표준화 + executor.py round-trip canary(always-on) + HARNESS_ACTIVE flag heartbeat + agent-boundary/commit-gate/agent-gate/skill-gate/skill-stop-protect V2 분기 + ralph-session-stop 3-layer fallback(HARNESS_GUARD_V2_RALPH_FALLBACK, default off). 모든 V2 env unset 시 v1 동작 100% 회귀 0. py_compile + smoke-test 57/57 PASS. | — |
 
 ---
 
@@ -805,6 +806,26 @@ def _resolve_plugin_root() -> Path:
 - `orchestration/rationale.md` HARNESS-CHG-20260428-13 — 4섹션 결정 근거.
 - 후속 PR (Iter 2): W2 5 가드 모델 변경 + W4 진단 enrichment + executor round-trip canary.
 - 후속 PR (Iter 3): W5 회귀 테스트 + jajang fixtures.
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-13.2` — 2026-04-28 — Phase 2 Iter 2 (W2+W4) 가드 V2 + ralph fallback
+
+**Type**: infra (5 가드 V2 분기 + Layered Defense 보강 + ralph-session-stop fallback)
+
+**Branch**: `harness/guard-realignment-iter2`
+
+**Issue**: #13 — Phase 2 Guard Model Realignment. W2 (5 가드 코드 변경) + W4 (deny 메시지 enrichment + executor round-trip canary) Iter 2 범위.
+
+**범위 요약**: 13.1 에서 정의한 V2 모델을 코드에 반영. `HARNESS_GUARD_V2_*` env unset 시 v1 동작 100% 보존(회귀 0). 5 가드 + ralph-session-stop 3-layer fallback + 4개 헬퍼 + executor canary.
+
+- PR review 후속 fix (LGTM 이전 단계):
+  - `hooks/agent-gate.py`: `flag_path` import 누락 추가 — V2 활성 시 `auto_gc_stale_flag()` 호출 직전 NameError 방지 (MUST FIX 1).
+  - `hooks/agent-boundary.py` + `hooks/commit-gate.py`: unused `_les` import + dead branch 제거 — V2 분기 정리 과정에서 남은 죽은 코드 (MUST FIX 2).
+  - `hooks/skill-stop-protect.py:121`: `clear_active_skill()` try/except 래핑 — `update_live` raise 변경에 따라 예외 전파로 `_log_event` 도달 못 하는 회귀 차단(권고).
+- impl 계획 정밀화: `docs/impl/13-guard-realignment.md` 를 architect (module-plan)이 줄번호 + 함수 시그니처 + 의사코드 수준으로 정밀화 (503 → 1099 line). 5번째 위험 실측 케이스 (Cross-guard Silent Dependency Chain) 를 W4 에 `ralph-session-stop` 3-layer fallback (`HARNESS_GUARD_V2_RALPH_FALLBACK`, default off) 으로 영구 fix 명시.
 
 **Exception**: —
 

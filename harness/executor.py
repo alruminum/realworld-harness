@@ -85,6 +85,26 @@ def main() -> None:
         session_id = ss.current_session_id()
         if session_id:
             os.environ["HARNESS_SESSION_ID"] = session_id
+            # W4 — live.json round-trip canary (always-on).
+            # silent-cascade 사전 차단: live.json 쓰기 불가 시 즉시 ESCALATE.
+            # §2.4: executor 진입 직후 1회 검증 — downstream 가드 오염 방지.
+            try:
+                sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
+                from harness_common import _verify_live_json_writable  # type: ignore
+            except ImportError:
+                _verify_live_json_writable = None  # type: ignore
+            if _verify_live_json_writable is not None:
+                _canary_ok, _canary_err = _verify_live_json_writable(session_id)
+                if not _canary_ok:
+                    print(
+                        f"[HARNESS] \u274c ESCALATE \u2014 live.json round-trip \uc2e4\ud328: {_canary_err}\n"
+                        f"  downstream guards (agent-boundary/issue-gate/commit-gate/ralph-session-stop) \uac00\n"
+                        f"  silent-cascade \ud569\ub2c8\ub2e4. \uc9c4\ub2e8:\n"
+                        f"  ls -la .claude/harness-state/.sessions/{session_id}/\n"
+                        f"  df -h .claude/harness-state/  # \ub514\uc2a4\ud06c \ud480 \ud655\uc778\n",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
 
     state_dir = StateDir(Path.cwd(), prefix, issue_num=issue_num)
 
@@ -185,6 +205,15 @@ def main() -> None:
                 "heartbeat": int(time.time()),
             }))
         except OSError:
+            pass
+        # W2 §1.3 heartbeat — HARNESS_ACTIVE flag mtime touch.
+        # agent-gate.py 의 _is_active_flag_fresh() TTL=6h 이 false-GC 하지 않도록
+        # 매 write_lease() 호출(15초 간격)마다 flag mtime 갱신.
+        try:
+            _harness_active_flag = state_dir.flags_dir / f"{prefix}_{Flag.HARNESS_ACTIVE}"
+            if _harness_active_flag.exists():
+                _harness_active_flag.touch(exist_ok=True)
+        except Exception:
             pass
 
     write_lease()

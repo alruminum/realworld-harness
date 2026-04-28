@@ -107,11 +107,92 @@ def _atomic_write(state_file: Path, content: str) -> None:
 
 
 def _is_ralph_initiator(sid: str) -> bool:
-    """현재 세션이 ralph-loop의 시작자인지 — live.json.skill 기준."""
+    """현재 세션이 ralph-loop의 시작자인지 — 3-layer fallback.
+
+    Staged rollout: HARNESS_GUARD_V2_RALPH_FALLBACK=1 일 때만 2~3차 활성.
+    미설정 시 v1 동작 (live.json.skill 단일 검사) 유지 — regression 0.
+
+    1차 (always): live.json.skill.name ∈ RALPH_SKILL_NAMES
+    2차 (V2): live.json._meta.skill_started_at 존재 (skill-gate 가 partial 기록 흔적)
+    3차 (V2): RALPH_SESSION_INITIATOR env var == sid (skill-gate.jsonl corroboration 포함)
+              또는 ralph-cross-session.jsonl 에 본 sid 의 claim_self 이벤트가 있는지
+
+    §1.9 / §4.7 — Phase 2 W4 (5번째 위험 실측 케이스 영구 fix).
+    """
+    # 1차 — v1 경로 (변경 없음)
     skill = ss.get_active_skill(sid)
-    if not skill:
+    if skill and skill.get("name", "") in RALPH_SKILL_NAMES:
+        return True
+
+    # V2 staged rollout — 미설정 시 v1 결과 (False) 반환
+    if os.environ.get("HARNESS_GUARD_V2_RALPH_FALLBACK") != "1":
         return False
-    return skill.get("name", "") in RALPH_SKILL_NAMES
+
+    # 2차 — _meta 흔적 (skill-gate 가 _meta 만 쓰고 skill 갱신 실패한 partial 케이스)
+    try:
+        live_p = ss.live_path(sid)
+        if live_p.exists():
+            data = json.loads(live_p.read_text(encoding="utf-8"))
+            meta = data.get("_meta") or {}
+            # skill-gate 가 partial 흔적을 _meta 에 남기는 경우 (W4 보강과 함께 도입)
+            if meta.get("skill_started_at") and meta.get("skill_name", "") in RALPH_SKILL_NAMES:
+                _log_event({
+                    "event": "fallback_meta_match",
+                    "sid": sid,
+                    "skill_name": meta.get("skill_name"),
+                })
+                return True
+    except (json.JSONDecodeError, OSError):
+        pass
+
+    # 3차 — env var + skill-gate.jsonl corroboration (§4.7 false-positive 차단)
+    env_initiator = os.environ.get("RALPH_SESSION_INITIATOR", "")
+    if env_initiator and env_initiator == sid:
+        # 보강: skill-gate.jsonl 에 최근 30분 내 본 sid 의 ralph 호출 흔적
+        try:
+            log_p = ss.state_root() / ".logs" / "skill-gate.jsonl"
+            if log_p.exists():
+                recent_threshold = int(time.time()) - 1800  # 30 min
+                for line in log_p.read_text(encoding="utf-8").splitlines()[-200:]:
+                    try:
+                        evt = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if (
+                        evt.get("sid") == sid
+                        and evt.get("event") == "set_skill_ok"
+                        and evt.get("skill") in RALPH_SKILL_NAMES
+                        and evt.get("ts", 0) >= recent_threshold
+                    ):
+                        _log_event({"event": "fallback_env_match_corroborated", "sid": sid})
+                        return True
+                # env match 했지만 corroboration 실패 — false-positive 의심
+                _log_event({"event": "fallback_env_match_uncorroborated", "sid": sid})
+                return False
+        except (json.JSONDecodeError, OSError):
+            pass
+        # log 자체 없음 → env 만 신뢰 (조기 도입 시 fallback)
+        _log_event({"event": "fallback_env_match", "sid": sid})
+        return True
+
+    # 3차-b — ralph-cross-session.jsonl 에서 본 sid 의 claim_self 이벤트 검색
+    try:
+        log_p = ss.state_root() / ".logs" / "ralph-cross-session.jsonl"
+        if log_p.exists():
+            for line in log_p.read_text(encoding="utf-8").splitlines():
+                try:
+                    evt = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if evt.get("event") == "claim_self" and evt.get("sid") == sid:
+                    _log_event({"event": "fallback_jsonl_match", "sid": sid})
+                    return True
+    except OSError:
+        pass
+
+    # 모든 폴백 실패 — placeholder 박는 v1 동작 유지 (regression 0)
+    _log_event({"event": "fallback_all_missed", "sid": sid})
+    return False
 
 
 def _log_event(event: dict) -> None:
