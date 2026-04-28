@@ -311,7 +311,7 @@ DESIGN_HANDOFF 패키지의 `## Issue: #N`에서 이슈 번호를 읽고, 위에
 ```bash
 PREFIX_ARGS=()
 [ -n "$PREFIX" ] && PREFIX_ARGS=(--prefix "$PREFIX")
-python3 ~/.claude/harness/executor.py impl \
+python3 "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/harness/executor.py" impl \
   --issue <DESIGN_HANDOFF의 Issue 번호> \
   --depth <simple|std|deep> \
   "${PREFIX_ARGS[@]}"

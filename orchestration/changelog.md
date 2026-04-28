@@ -45,6 +45,7 @@
 | `HARNESS-CHG-20260428-02` | 2026-04-28 | infra | [2.2] core.py 의 gh issue view → tracker.get_issue() 위임 + 7파일 f-string `#{issue_num}` → `{format_ref(issue_num)}` + executor 진입 normalize | — |
 | `HARNESS-CHG-20260428-02` | 2026-04-28 | infra | [2.3] smoke-test.sh §9 tracker LOCAL-N regression 회로 5건 추가 (parse_ref / format/normalize / LocalBackend 라운드트립 / 강제 폴백 / which CLI) — 56/56 PASS | — |
 | `HARNESS-CHG-20260428-03` | 2026-04-28 | infra | [3.1] BATS 잔존 표기 제거 — CHANGELOG 부채 라인 + PR 템플릿 + policies.md §2 `tests/bats/` 표기. 코드/스크립트에 BATS 흔적 0건 확인 (점검 결과) | — |
+| `HARNESS-CHG-20260428-04` | 2026-04-28 | infra | [4.1] `~/.claude/harness/executor.py` hardcode 제거 — 6 파일 13 위치 → `${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/harness/executor.py` (jajang 실제 사례에서 No such file or directory 발생) | — |
 
 ---
 
@@ -294,6 +295,52 @@
 **Linked**:
 - `CHANGELOG.md` v0.2.0 알려진 부채 §[6.2]
 - `HARNESS-CHG-20260427-06` rationale.md Follow-Up 의 `[6.2]` 항목
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-04` — 2026-04-28 — executor.py 경로 hardcode 제거 (배포 차단 버그)
+
+**Type**: infra (commands + hooks)
+
+**Branch**: `harness/path-hardcode-fix`
+
+**Issue**: 별도 추적 ID 미발급 — 외부 사용자(jajang 프로젝트) 실측 사고 보고
+
+**증상 보고**: 사용자가 jajang 프로젝트에서 `/qa` 스킬 실행 → AI 가 deny 메시지의 hint 따라 `python3 ~/.claude/harness/executor.py ...` 시도 → `[Errno 2] No such file or directory: '/Users/dc.kim/.claude/harness/executor.py'`
+
+**원인**: Phase 4 [4.13] migrate-step2.sh 가 `~/.claude/harness/` 디렉토리 정리 후, 실제 executor.py 는 `~/.claude/plugins/marketplaces/realworld-harness/harness/executor.py` 에 설치됨. 그러나 다음 위치들의 user-facing 힌트는 *삭제된 경로* 를 그대로 가리킴:
+
+| 파일 | 위치 |
+|---|---|
+| `commands/quick.md` | line 65 |
+| `commands/qa.md` | lines 92, 106 |
+| `commands/ux.md` | line 314 |
+| `commands/init-rwh.md` | line 106 |
+| `commands/product-plan.md` | lines 105, 123, 164, 263 |
+| `hooks/agent-gate.py` | lines 101, 102, 117 (deny 메시지 dict + Mode-level deny) |
+| **합계** | **6 파일 13 위치** |
+
+**수정**: 모든 위치를 `${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/harness/executor.py` 형태로 일괄 교체:
+- 플러그인 install + Claude Code 세션: `CLAUDE_PLUGIN_ROOT` env 설정됨 → 그대로 사용
+- env 미설정 (수동 shell): 폴백 경로 = 실제 설치 위치
+- 기존 `~/.claude/harness/executor.py` 폴백은 *삭제* (post-migration 환경에서 무효)
+
+**검증**:
+- `bash scripts/smoke-test.sh` → 56/56 PASS (회귀 없음)
+- `python3 -m unittest tests.pytest.test_tracker` → 33/33 OK
+- `grep -rn '~/.claude/harness/executor.py' commands/ hooks/` → 0 잔존
+
+**비변경**:
+- `harness/executor.py` 자체의 `PLUGIN_ROOT` 폴백 (line 20) — 코드 내부에서 path 해석에 사용. user-facing hint 와 별개. 이번 PR 범위 밖
+- `orchestration/upstream/*` historical entries — 보존
+- `scripts/setup-rwh.sh:166` — 마이그레이션 정리 로직, user-facing 아님
+
+**Linked**:
+- 외부 사용자 보고 (2026-04-28): jajang 프로젝트에서 발생
+- Phase 4 [4.13] migrate-step2.sh — 원인이 된 마이그레이션
+- 후속: `HARNESS-CHG-20260428-05` (예정) — architect 마커 미감지 → SPEC_GAP_ESCALATE 진단·수정 (별도 Task-ID)
 
 **Exception**: —
 
