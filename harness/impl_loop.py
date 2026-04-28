@@ -35,6 +35,7 @@ try:
         extract_acceptance_criteria, extract_polish_items,
     )
     from .providers import run_review_batch
+    from .tracker import format_ref
 except ImportError:
     from config import HarnessConfig, load_config
     from core import (
@@ -55,6 +56,7 @@ except ImportError:
         extract_acceptance_criteria, extract_polish_items,
     )
     from providers import run_review_batch
+    from tracker import format_ref
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -371,7 +373,7 @@ def run_simple(
         _eng_t0 = time.time()
         agent_exit = agent_call(
             "engineer", 900,
-            f"impl: {impl_file}\nissue: #{issue_num}\ntask:\n{task}\n"
+            f"impl: {impl_file}\nissue: {format_ref(issue_num)}\ntask:\n{task}\n"
             f"context:\n{context}\nconstraints:\n{constraints}{_val_handoff_hint}",
             eng_out, run_logger, config, str(attempt_dir),
         )
@@ -437,7 +439,7 @@ def run_simple(
             agent_call(
                 "architect", 900,
                 f"@MODE:ARCHITECT:SPEC_GAP\n"
-                f"engineer가 SPEC_GAP_FOUND 보고. impl: {impl_file} issue: #{issue_num}\n"
+                f"engineer가 SPEC_GAP_FOUND 보고. impl: {impl_file} issue: {format_ref(issue_num)}\n"
                 f"인수인계 문서: {_sg_handoff_path}\n"
                 f"현재 depth: simple\nengineer 보고:\n{spec_gap_context}\n"
                 f"[지시] SPEC_GAP 해결 후 depth 재판정. frontmatter depth: 필드를 재선언하라. "
@@ -706,7 +708,7 @@ def run_simple(
                     )
                     subprocess.run(["git", "add", "--"] + _polish_changed, capture_output=True, timeout=10)
                     subprocess.run(
-                        ["git", "commit", "-m", f"revert: polish regression (#{issue_num})"],
+                        ["git", "commit", "-m", f"revert: polish regression ({format_ref(issue_num)})"],
                         capture_output=True, timeout=10,
                     )
                     hlog_fn(f"POLISH revert 커밋 ({len(_polish_changed)} files)")
@@ -717,7 +719,7 @@ def run_simple(
                 if _changed:
                     subprocess.run(["git", "add", "--"] + _changed, capture_output=True, timeout=10)
                     subprocess.run(
-                        ["git", "commit", "-m", f"polish: code cleanup (#{issue_num})"],
+                        ["git", "commit", "-m", f"polish: code cleanup ({format_ref(issue_num)})"],
                         capture_output=True, timeout=10,
                     )
                     hlog_fn("POLISH 커밋 완료")
@@ -785,7 +787,7 @@ def run_simple(
         hlog_fn(f"=== 루프 종료 (HARNESS_DONE, attempt={attempt + 1}) ===")
         print("HARNESS_DONE")
         print(f"impl: {impl_file}")
-        print(f"issue: #{issue_num}")
+        print(f"issue: {format_ref(issue_num)}")
         print(f"attempts: {attempt + 1}")
         print(f"commit: {merge_commit}")
         print(f"pr_body: {pr_body_file}")
@@ -935,7 +937,7 @@ def _run_std_deep(
                 f"@MODE:TEST_ENGINEER:TDD\n"
                 f'@PARAMS: {{ "impl_path": "{impl_file}" }}\n\n'
                 f"[지시] impl의 인터페이스 정의 + 수용 기준(TEST)에서 테스트 작성. 코드 없이 impl만 참조.\n"
-                f"issue: #{issue_num}"
+                f"issue: {format_ref(issue_num)}"
             )
             _te_tdd_t0 = time.time()
             te_tdd_exit = agent_call("test-engineer", 900, te_tdd_prompt, te_tdd_out, run_logger, config, str(attempt_dir))
@@ -1060,7 +1062,7 @@ def _run_std_deep(
         _eng_t0 = time.time()
         agent_exit = agent_call(
             "engineer", 900,
-            f"impl: {impl_file}\nissue: #{issue_num}\ntask:\n{task}\n"
+            f"impl: {impl_file}\nissue: {format_ref(issue_num)}\ntask:\n{task}\n"
             f"context:\n{context}\nconstraints:\n{constraints}",
             eng_out, run_logger, config, str(attempt_dir),
         )
@@ -1118,7 +1120,7 @@ def _run_std_deep(
             if depth == "deep":
                 sg_prompt = (
                     f"@MODE:ARCHITECT:SPEC_GAP\n"
-                    f"engineer가 SPEC_GAP_FOUND 보고. impl: {impl_file} issue: #{issue_num}\n"
+                    f"engineer가 SPEC_GAP_FOUND 보고. impl: {impl_file} issue: {format_ref(issue_num)}\n"
                     f"인수인계 문서: {_sg_handoff_path2}\n"
                     f"현재 depth: deep (최고 depth — 하향 없음)\n"
                     f"engineer 보고:\n{spec_gap_ctx}\n"
@@ -1127,7 +1129,7 @@ def _run_std_deep(
             else:
                 sg_prompt = (
                     f"@MODE:ARCHITECT:SPEC_GAP\n"
-                    f"engineer가 SPEC_GAP_FOUND 보고. impl: {impl_file} issue: #{issue_num}\n"
+                    f"engineer가 SPEC_GAP_FOUND 보고. impl: {impl_file} issue: {format_ref(issue_num)}\n"
                     f"현재 depth: {depth}\nengineer 보고:\n{spec_gap_ctx}\n"
                     f"[지시] SPEC_GAP 해결 후 depth 재판정. frontmatter depth: 필드를 재선언하라. "
                     f"상향만 허용(simple→std→deep)."
@@ -1244,7 +1246,7 @@ def _run_std_deep(
                 f'@PARAMS: {{ "impl_path": "{impl_file}" }}\n\n'
                 f"[지시] impl + 구현 코드 기반으로 테스트 작성. 테스트 실행은 하지 마라 (test_command 미설정).\n"
                 f"수정된 파일: {changed_files_str}\n"
-                f"issue: #{issue_num}"
+                f"issue: {format_ref(issue_num)}"
                 f"{_te_handoff_hint}"
             )
 
@@ -1357,7 +1359,7 @@ def _run_std_deep(
             arch_sm_out = str(state_dir.path / f"{prefix}_arch_sm_out.txt")
             agent_call(
                 "architect", 900,
-                f"@MODE:ARCHITECT:MODULE_PLAN\nSPEC_MISSING 복구. impl: {impl_file} issue: #{issue_num}",
+                f"@MODE:ARCHITECT:MODULE_PLAN\nSPEC_MISSING 복구. impl: {impl_file} issue: {format_ref(issue_num)}",
                 arch_sm_out, run_logger, config,
             )
             budget_check("architect", arch_sm_out, total_cost, config.max_total_cost, state_dir, prefix, config=config)
@@ -1525,7 +1527,7 @@ def _run_std_deep(
                     )
                     subprocess.run(["git", "add", "--"] + _polish_changed, capture_output=True, timeout=10)
                     subprocess.run(
-                        ["git", "commit", "-m", f"revert: polish regression (#{issue_num})"],
+                        ["git", "commit", "-m", f"revert: polish regression ({format_ref(issue_num)})"],
                         capture_output=True, timeout=10,
                     )
                     hlog_fn(f"POLISH revert 커밋 ({len(_polish_changed)} files)")
@@ -1535,7 +1537,7 @@ def _run_std_deep(
                 if _changed:
                     subprocess.run(["git", "add", "--"] + _changed, capture_output=True, timeout=10)
                     subprocess.run(
-                        ["git", "commit", "-m", f"polish: code cleanup (#{issue_num})"],
+                        ["git", "commit", "-m", f"polish: code cleanup ({format_ref(issue_num)})"],
                         capture_output=True, timeout=10,
                     )
                     hlog_fn("POLISH 커밋 완료")
@@ -1661,7 +1663,7 @@ def _run_std_deep(
         hlog_fn(f"=== 루프 종료 (HARNESS_DONE, attempt={attempt + 1}) ===")
         print("HARNESS_DONE")
         print(f"impl: {impl_file}")
-        print(f"issue: #{issue_num}")
+        print(f"issue: {format_ref(issue_num)}")
         print(f"attempts: {attempt + 1}")
         print(f"commit: {merge_commit}")
         print(f"pr_body: {pr_body_file}")

@@ -18,8 +18,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 try:
     from .config import HarnessConfig, load_config
+    from .tracker import format_ref, parse_ref, get_tracker_for
 except ImportError:
     from config import HarnessConfig, load_config
+    from tracker import format_ref, parse_ref, get_tracker_for
 
 # Plugin root resolution — CLAUDE_PLUGIN_ROOT env에 폴백 ~/.claude.
 # 플러그인 마켓플레이스 설치 시 CLAUDE_PLUGIN_ROOT 가 자동 set됨.
@@ -290,7 +292,7 @@ class HUD:
             except OSError:
                 pass
         mode = "plan" if depth == "plan" else "impl"
-        issue_str = f" #{issue_num}" if issue_num else ""
+        issue_str = f" {format_ref(issue_num)}" if issue_num else ""
         self._event(f"{'═' * 50}")
         self._event(f"루프 시작 | mode={mode} depth={depth}{issue_str}")
 
@@ -1377,33 +1379,32 @@ def create_feature_branch(
     """Feature branch 생성. 동일 브랜치 존재 시 재진입."""
     issue_num = str(issue_num)
 
-    # milestone: GitHub 이슈에서 읽기
-    milestone = ""
+    # milestone + title: tracker 백엔드 경유 (GitHub gh / Local jsonl 모두 동작).
+    # 기존 직접 gh issue view 호출 2회 → tracker.get_issue() 1회로 통합.
+    # silent fail 정책 보존 — 백엔드 미가용 시 milestone/slug 빈 채로 진행.
+    issue_meta: Dict[str, Any] = {}
     try:
-        r = subprocess.run(
-            ["gh", "issue", "view", issue_num, "--json", "milestone", "-q", ".milestone.title"],
-            capture_output=True, text=True, timeout=10,
-        )
-        if r.returncode == 0 and r.stdout.strip():
-            milestone = re.sub(r"[^a-z0-9-]", "-", r.stdout.strip().lower())
-            milestone = re.sub(r"-+", "-", milestone).strip("-")
+        ref = parse_ref(issue_num)
+        issue_meta = get_tracker_for(ref).get_issue(ref)
     except Exception:
         pass
 
-    # slug: issue title → 영문/숫자, 30자 캡
+    # milestone 추출 — github 백엔드는 dict({"title": ...}), local 은 string
+    ms_field = issue_meta.get("milestone")
+    ms_str = ms_field.get("title", "") if isinstance(ms_field, dict) else (ms_field or "")
+    milestone = ""
+    if ms_str:
+        milestone = re.sub(r"[^a-z0-9-]", "-", ms_str.lower())
+        milestone = re.sub(r"-+", "-", milestone).strip("-")
+
+    # slug — title 30자 캡
     slug = ""
-    try:
-        r = subprocess.run(
-            ["gh", "issue", "view", issue_num, "--json", "title", "-q", ".title"],
-            capture_output=True, text=True, timeout=10,
-        )
-        if r.returncode == 0 and r.stdout.strip():
-            raw = r.stdout.strip().lower()
-            raw = re.sub(r"[^a-z0-9 -]", "", raw)
-            raw = re.sub(r"\s+", " ", raw).strip()
-            slug = re.sub(r"-+", "-", raw.replace(" ", "-")).strip("-")[:30]
-    except Exception:
-        pass
+    title = issue_meta.get("title") or ""
+    if title:
+        raw = title.lower()
+        raw = re.sub(r"[^a-z0-9 -]", "", raw)
+        raw = re.sub(r"\s+", " ", raw).strip()
+        slug = re.sub(r"-+", "-", raw.replace(" ", "-")).strip("-")[:30]
 
     # 브랜치명 조립
     branch_name = f"{branch_type}/"
@@ -1468,10 +1469,10 @@ def push_and_ensure_pr(
 
     # PR 생성
     impl_name = Path(impl_file).stem if impl_file else f"issue-{issue}"
-    pr_title = f"feat: {impl_name} (#{issue})"
+    pr_title = f"feat: {impl_name} ({format_ref(issue)})"
 
     # PR body: generate_pr_body 시도 (순환 의존 방지 lazy import), 실패 시 간단 body
-    pr_body = f"## Summary\n- Issue: #{issue}\n- Branch: `{branch}`\n- Depth: {depth}"
+    pr_body = f"## Summary\n- Issue: {format_ref(issue)}\n- Branch: `{branch}`\n- Depth: {depth}"
     if impl_file and state_dir and prefix:
         try:
             try:
@@ -1587,13 +1588,13 @@ def generate_commit_msg(impl_file: str = "", issue_num: str | int = "") -> str:
     changed = " ".join(r.stdout.strip().splitlines()[:5]) if r.returncode == 0 else "(파일 목록 없음)"
 
     return (
-        f"feat: implement {impl_name} (#{issue_num})\n"
+        f"feat: implement {impl_name} ({format_ref(issue_num)})\n"
         f"\n"
-        f"[왜] Issue #{issue_num} 구현\n"
+        f"[왜] Issue {format_ref(issue_num)} 구현\n"
         f"[변경]\n"
         f"- {changed}\n"
         f"\n"
-        f"Closes #{issue_num}\n"
+        f"Closes {format_ref(issue_num)}\n"
         f"\n"
         f"Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
     )
@@ -1898,7 +1899,7 @@ def generate_handoff(
     if impl_file:
         sections.append(f"impl: {impl_file}")
     if issue_num:
-        sections.append(f"issue: #{issue_num}")
+        sections.append(f"issue: {format_ref(issue_num)}")
     sections.append("")
 
     # 변경 요약
@@ -2167,7 +2168,7 @@ def run_plan_validation(
     print("[HARNESS] Plan Validation")
     agent_call(
         "validator", 300,
-        f"@MODE:VALIDATOR:PLAN_VALIDATION\nimpl: {impl_file} issue: #{issue_num}{handoff_hint}",
+        f"@MODE:VALIDATOR:PLAN_VALIDATION\nimpl: {impl_file} issue: {format_ref(issue_num)}{handoff_hint}",
         val_out, run_logger, config,
     )
     val_result = parse_marker(val_out, "PLAN_VALIDATION_PASS|PLAN_VALIDATION_FAIL|PASS|FAIL")
@@ -2218,7 +2219,7 @@ def run_plan_validation(
         val_out2 = str(state_dir.path / f"{prefix}_val_pv_out{rework}.txt")
         agent_call(
             "validator", 300,
-            f"@MODE:VALIDATOR:PLAN_VALIDATION\nimpl: {impl_file} issue: #{issue_num}",
+            f"@MODE:VALIDATOR:PLAN_VALIDATION\nimpl: {impl_file} issue: {format_ref(issue_num)}",
             val_out2, run_logger, config,
         )
         val_result = parse_marker(val_out2, "PLAN_VALIDATION_PASS|PLAN_VALIDATION_FAIL|PASS|FAIL")
@@ -2253,7 +2254,7 @@ def run_design_validation(
     print("[HARNESS] Design Validation")
     agent_call(
         "validator", 300,
-        f"@MODE:VALIDATOR:DESIGN_VALIDATION\ndesign_doc: {design_doc} issue: #{issue_num}",
+        f"@MODE:VALIDATOR:DESIGN_VALIDATION\ndesign_doc: {design_doc} issue: {format_ref(issue_num)}",
         val_out, run_logger, config,
     )
     val_result = parse_marker(val_out, "DESIGN_REVIEW_PASS|DESIGN_REVIEW_FAIL|PASS|FAIL")
@@ -2287,7 +2288,7 @@ def run_design_validation(
         val_out2 = str(state_dir.path / f"{prefix}_val_dv_out{rework}.txt")
         agent_call(
             "validator", 300,
-            f"@MODE:VALIDATOR:DESIGN_VALIDATION\ndesign_doc: {design_doc} issue: #{issue_num}",
+            f"@MODE:VALIDATOR:DESIGN_VALIDATION\ndesign_doc: {design_doc} issue: {format_ref(issue_num)}",
             val_out2, run_logger, config,
         )
         val_result = parse_marker(val_out2, "DESIGN_REVIEW_PASS|DESIGN_REVIEW_FAIL|PASS|FAIL")
@@ -2322,7 +2323,7 @@ def run_ux_validation(
     print("[HARNESS] UX Validation")
     agent_call(
         "validator", 300,
-        f"@MODE:VALIDATOR:UX_VALIDATION\nux_flow_doc: {ux_flow_doc}\nprd_path: {prd_path}\nissue: #{issue_num}",
+        f"@MODE:VALIDATOR:UX_VALIDATION\nux_flow_doc: {ux_flow_doc}\nprd_path: {prd_path}\nissue: {format_ref(issue_num)}",
         val_out, run_logger, config,
     )
     val_result = parse_marker(val_out, "UX_REVIEW_PASS|UX_REVIEW_FAIL|PASS|FAIL")
@@ -2357,7 +2358,7 @@ def run_ux_validation(
         val_out2 = str(state_dir.path / f"{prefix}_val_ux_out{rework}.txt")
         agent_call(
             "validator", 300,
-            f"@MODE:VALIDATOR:UX_VALIDATION\nux_flow_doc: {ux_flow_doc}\nprd_path: {prd_path}\nissue: #{issue_num}",
+            f"@MODE:VALIDATOR:UX_VALIDATION\nux_flow_doc: {ux_flow_doc}\nprd_path: {prd_path}\nissue: {format_ref(issue_num)}",
             val_out2, run_logger, config,
         )
         val_result = parse_marker(val_out2, "UX_REVIEW_PASS|UX_REVIEW_FAIL|PASS|FAIL")

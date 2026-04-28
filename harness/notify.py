@@ -63,7 +63,15 @@ def notify(
     m, s = divmod(max(0, int(elapsed)), 60)
     head = f"[{tag}] prefix={prefix or '?'}"
     if issue:
-        head += f" issue=#{issue}"
+        # tracker.format_ref 사용 — "#42" / "LOCAL-7" 일관 표기. lazy import 로 순환 회피.
+        try:
+            try:
+                from .tracker import format_ref as _fr
+            except ImportError:
+                from tracker import format_ref as _fr  # type: ignore
+            head += f" issue={_fr(issue)}"
+        except Exception:
+            head += f" issue=#{issue}"  # 폴백: tracker 미가용 시 legacy 표기
     head += f" ({m}m{s:02d}s"
     if cost_usd > 0:
         head += f", ${cost_usd:.2f}"

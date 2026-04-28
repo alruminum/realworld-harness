@@ -25,6 +25,7 @@ try:
         record_escalate,
     )
     from .impl_loop import run_simple, run_std, run_deep
+    from .tracker import format_ref
 except ImportError:
     from config import HarnessConfig
     from core import (
@@ -37,6 +38,7 @@ except ImportError:
         record_escalate,
     )
     from impl_loop import run_simple, run_std, run_deep
+    from tracker import format_ref
 
 
 def _maybe_auto_spec_gap(
@@ -73,7 +75,7 @@ def _maybe_auto_spec_gap(
         f"@MODE:ARCHITECT:SPEC_GAP\n"
         f"이 impl 파일이 직전 run들에서 {count}회 IMPLEMENTATION_ESCALATE됐다.\n"
         f"impl: {impl_file}\n"
-        f"issue: #{issue_num}\n"
+        f"issue: {format_ref(issue_num)}\n"
         f"누적 fail_types: {fail_types}\n\n"
         f"같은 fail_type이 반복되는 원인은 impl 스펙 자체에 갭이 있다는 신호다. "
         f"impl 파일을 읽고 다음 중 하나로 대응하라:\n"
@@ -158,7 +160,7 @@ def ensure_depth_frontmatter(
         f"주의: 기존 테스트가 assertion하는 DOM 구조/텍스트 리터럴/testid/role을 바꾸는 경우 "
         f"(이모지→SVG, 버튼 텍스트 변경, 엘리먼트 교체 등) simple 금지 — std로 분류. "
         f"TDD 선행이 있어야 회귀를 잡는다.\n"
-        f"impl: {impl_file}\nissue: #{issue_num}\n"
+        f"impl: {impl_file}\nissue: {format_ref(issue_num)}\n"
         f"기존 frontmatter 유무: {fm_status}\n"
         f"파일 내용 확인 후 depth만 추가하라. 다른 내용은 수정하지 마라.",
         patch_out, run_logger, config,
@@ -352,12 +354,12 @@ def run_impl(
             elif state_dir.flag_exists(Flag.DESIGN_CRITIC_PASSED):
                 print("[HARNESS] ⚠️ design_critic_passed 플래그 있으나 design_handoff.md 없음 — architect가 디자인 스펙 없이 진행")
 
-            print(f"[HARNESS] architect LIGHT_PLAN 작성 (issue #{issue_num}, depth_hint={depth_hint or 'none'})")
-            hud.log(f"architect LIGHT_PLAN (issue #{issue_num})")
+            print(f"[HARNESS] architect LIGHT_PLAN 작성 (issue {format_ref(issue_num)}, depth_hint={depth_hint or 'none'})")
+            hud.log(f"architect LIGHT_PLAN (issue {format_ref(issue_num)})")
             arch_exit = agent_call(
                 "architect", 900,
                 f"@MODE:ARCHITECT:LIGHT_PLAN\n"
-                f"issue #{issue_num}\n"
+                f"issue {format_ref(issue_num)}\n"
                 f"suspected_files: {suspected_files}\n"
                 f"labels: {issue_labels}\n"
                 f"issue_summary:\n{issue_summary}\n"
@@ -376,7 +378,7 @@ def run_impl(
             )
         else:
             print("[HARNESS] architect Module Plan 작성")
-            hud.log(f"architect Module Plan (issue #{issue_num})")
+            hud.log(f"architect Module Plan (issue {format_ref(issue_num)})")
             _mp_extra = ""
             if Path("docs/design-handoff.md").exists():
                 _mp_extra = "\ndesign_handoff: docs/design-handoff.md"
@@ -386,7 +388,7 @@ def run_impl(
             arch_exit = agent_call(
                 "architect", 900,
                 f"@MODE:ARCHITECT:MODULE_PLAN\n"
-                f"issue #{issue_num} impl 계획 작성. context: {context}{_mp_extra}",
+                f"issue {format_ref(issue_num)} impl 계획 작성. context: {context}{_mp_extra}",
                 arch_out, run_logger, config,
             )
 
@@ -492,7 +494,7 @@ def run_impl(
         (state_dir.path / f"{prefix}_impl_path").write_text(impl_file, encoding="utf-8")
         print("PLAN_VALIDATION_PASS")
         print(f"impl: {impl_file}")
-        print(f"issue: #{issue_num}")
+        print(f"issue: {format_ref(issue_num)}")
 
         if depth == "auto":
             depth = detect_depth(impl_file)
