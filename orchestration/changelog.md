@@ -58,6 +58,7 @@
 | `HARNESS-CHG-20260428-12` | 2026-04-28 | infra | [12.1] PLUGIN_ROOT `__file__` self-detect — env 미설정 시 `~/.claude` 폴백(post-migration 무효) 대신 `${plugin}/harness/core.py` 위치에서 root 추론. session_state import 안정화 (jajang 사례 — bash `${VAR:-...}` path 확장은 env export 아님) | — |
 | `HARNESS-CHG-20260428-13.1` | 2026-04-28 | docs | Phase 2 Iter 1 (W1+W3) — 가드 카탈로그 7개 (5개 W2 포함 / 2개 제외: issue-gate, plugin-write-guard) + spec §0 [invariant-shift] PR 토큰 정식 도입 + §3 I-1/I-2/I-7/I-9 보호 대상↔모델 분리 + architecture §5.6/§5.7 Layered Defense + §5.8 Staged Rollout + rationale 4섹션 + 5번째 위험 패턴 (Cross-guard Silent Dependency Chain) | — |
 | `HARNESS-CHG-20260428-13.2` | 2026-04-28 | infra | Phase 2 Iter 2 (W2+W4) — 5 가드 + 1 ralph fallback + Layered Defense 보강. config.py engineer_scope 필드 + tracker.MUTATING_SUBCOMMANDS SSOT + harness_common 4개 헬퍼(_load_engineer_scope/auto_gc_stale_flag/_verify_live_json_writable/_STATIC_ENGINEER_SCOPE) + session_state.update_live 쓰기 실패 stderr 표준화 + executor.py round-trip canary(always-on) + HARNESS_ACTIVE flag heartbeat + agent-boundary/commit-gate/agent-gate/skill-gate/skill-stop-protect V2 분기 + ralph-session-stop 3-layer fallback(HARNESS_GUARD_V2_RALPH_FALLBACK, default off). 모든 V2 env unset 시 v1 동작 100% 회귀 0. py_compile + smoke-test 57/57 PASS. | — |
+| `HARNESS-CHG-20260428-13.3` | 2026-04-28 | test  | Phase 2 Iter 3 (W5) — 회귀 테스트 + jajang fixtures + smoke-test 시나리오. `tests/pytest/test_guards.py` 신규 (101 케이스, 18 REQ 전수 / V2 on·off 양쪽 검증) + `tests/pytest/conftest.py` 신규 + 4 fixture 디렉토리(jajang_monorepo / llm_marker_variants / jajang_4categories / cross_guard_silent_dependency A·B) + `scripts/smoke-test.sh` 시나리오 10~14 추가(monorepo / env unset / LLM 변형 / cross-flag / silent dependency 가시화). pytest 101/101 + smoke-test 70/70 PASS. 코드 결함 0건(test 기술만 정정). 5번째 위험(Cross-guard Silent Dependency Chain) 본 ralph-loop Iter 2→3 transition 에서 production 재발 — 영구 fix가 default off라 v1 동작 그대로, 시나리오 A/B 자동 회귀 테스트화. invariant 변경 없음 → `[invariant-shift]` 토큰 미사용. | — |
 | `HARNESS-CHG-20260428-14.1` | 2026-04-28 | infra | MARKER_ALIASES 12개 변형 추가 — PLAN_VALIDATION(PLAN_VALIDATED/PLAN_VERIFIED/PLAN_PASS/PLAN_INVALID) + LIGHT_PLAN_READY(LIGHT_PLAN_DONE/LIGHT_PLAN_COMPLETE/LIGHT_PLAN_WRITTEN/BUGFIX_PLAN_READY) + READY_FOR_IMPL(MODULE_PLAN_READY/MODULE_PLAN_DONE/IMPL_PLAN_READY/IMPL_READY/PLAN_DONE/PLAN_WRITTEN/PLAN_COMPLETE). validator/architect 가 canonical 대신 자유 텍스트 변형 emit 시 SPEC_GAP_ESCALATE / PLAN_VALIDATION_ESCALATE 로 attempt 무위 소진되던 사례 차단. defense in depth 2nd layer 두꺼워짐. | — |
 | `HARNESS-CHG-20260428-14.2` | 2026-04-28 | infra | WorktreeManager.create_or_reuse 에 untracked plan 파일 자동 복사 추가 — `git worktree add` 직후 main repo `ls-files --others --exclude-standard` 결과 중 `docs/bugfix/`, `docs/impl/`, `docs/milestones/` prefix 파일을 worktree 같은 상대경로로 cp. architect 가 main repo 에 LIGHT_PLAN 작성 후 commit 전 worktree 진입하면 engineer 가 'impl 파일 없음' no_changes 로 attempt 0 무위 소진되던 사고 차단. 안전 패턴: plan 디렉토리만 — src/ 등은 worktree 경계 보호 위해 제외. | — |
 
@@ -828,6 +829,64 @@ def _resolve_plugin_root() -> Path:
   - `hooks/agent-boundary.py` + `hooks/commit-gate.py`: unused `_les` import + dead branch 제거 — V2 분기 정리 과정에서 남은 죽은 코드 (MUST FIX 2).
   - `hooks/skill-stop-protect.py:121`: `clear_active_skill()` try/except 래핑 — `update_live` raise 변경에 따라 예외 전파로 `_log_event` 도달 못 하는 회귀 차단(권고).
 - impl 계획 정밀화: `docs/impl/13-guard-realignment.md` 를 architect (module-plan)이 줄번호 + 함수 시그니처 + 의사코드 수준으로 정밀화 (503 → 1099 line). 5번째 위험 실측 케이스 (Cross-guard Silent Dependency Chain) 를 W4 에 `ralph-session-stop` 3-layer fallback (`HARNESS_GUARD_V2_RALPH_FALLBACK`, default off) 으로 영구 fix 명시.
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-13.3` — 2026-04-28 — Phase 2 Iter 3 (W5) 회귀 테스트 + jajang fixtures + smoke-test 시나리오
+
+**Type**: test (`tests/pytest/test_guards.py` 101 케이스 + 4 fixture 디렉토리 + `scripts/smoke-test.sh` 시나리오 10~14)
+
+**Branch**: `harness/guard-realignment-iter3`
+
+**Issue**: #13 — Phase 2 Guard Model Realignment. W5 (회귀 테스트 + jajang fixtures + smoke-test 시나리오) Iter 3 범위. W1+W3 (Iter 1, PR #14) / W2+W4 (Iter 2, PR #15) 후속.
+
+**범위 요약**: Iter 1/2 산출물의 회귀 테스트 자동화. 코드 결함 0건 — test 기술만 정정. 13.1 의 18 요구사항(REQ-001~018) 전수 커버. `HARNESS_GUARD_V2_*` env on/off 양쪽에서 invariant 보존 검증. invariant 변경 없음 → spec §0 룰에 따라 `[invariant-shift]` PR 토큰 미사용.
+
+**[13.3.W5] pytest 회귀 테스트 corpus** — `tests/pytest/test_guards.py` (신규, 101 케이스):
+- 가드별 단위 테스트: agent-boundary / commit-gate / agent-gate / skill-gate / skill-stop-protect / issue-gate / plugin-write-guard 7개.
+- V2 분기 양면 검증: `HARNESS_GUARD_V2_*` 미설정(v1 폴백) ↔ 설정(V2) 동일 invariant 결과 보장 — staged rollout 회귀 0 입증.
+- Layered Defense 분리 검증: blocking layer (deny 결정) ↔ informational layer (stderr/diag log) 분리. silent dependency 가시화 케이스 — `live.json.skill` 쓰기 실패 시 `agent-boundary` 동작 + stderr 경고 동시 발생 확인.
+- 18 REQ 전수 매핑: 각 테스트 케이스에 `# REQ-NNN` 주석으로 추적성 확보.
+- `tests/pytest/conftest.py` (신규) — fixture 공통 셋업 + tmp working dir + env reset.
+
+**[13.3.W5] jajang monorepo fixtures**:
+- `tests/pytest/fixtures/jajang_monorepo/` (신규) — agent-boundary `engineer_scope` 동적 화이트리스트 검증용. 멀티 패키지 구조에서 default 7 패턴 외 추가 경로 허용 입증.
+- `tests/pytest/fixtures/llm_marker_variants/` (신규) — parse_marker alias map 회귀 테스트 corpus. PLAN_LGTM / PLAN_OK / PLAN_APPROVE / APPROVE / REJECT 등 LLM 변형 → canonical 흡수 검증.
+- `tests/pytest/fixtures/jajang_4categories/` (신규) — 4 카테고리(path hardcode / marker fragility / state persistence stuck / scope strict) 재발 차단 자동화. 13.1 위험 패턴 카탈로그와 1:1.
+- `tests/pytest/fixtures/cross_guard_silent_dependency/` (신규 — 5번째 위험 시나리오 A/B):
+  - 시나리오 A: `skill-gate.py` `live.json.skill` 쓰기 silent 실패 → `agent-boundary.py` 가 활성 스킬 못 읽음 → false-block + 진단 부재.
+  - 시나리오 B: `agent-gate.py` `live.json.agent` 쓰기 실패 → `issue-gate.py`/`commit-gate.py` Gate 1 이 ISSUE_CREATORS 활성도 차단.
+  - 두 시나리오 모두 informational layer (stderr 경고 + diag log) 가 차단 결정 영향 없이 가시화하는지 검증.
+
+**[13.3.W5] smoke-test.sh 시나리오 10~14 추가**:
+- `scripts/smoke-test.sh` 5 시나리오 추가 — monorepo / env unset (V2 미활성 회귀) / LLM 변형 / cross-flag (V2 부분 활성) / silent dependency 가시화.
+- 기존 57/57 → 70/70 PASS (회귀 0).
+
+**[13.3.X] 5번째 위험 production 재발 + 본 회귀 테스트화**:
+- 본 ralph-loop이 Iter 2 → Iter 3 transition 에서도 stop-hook 미발동으로 멈춤 — `HARNESS_GUARD_V2_RALPH_FALLBACK` 영구 fix가 default off 이므로 v1 동작 그대로 유지.
+- 동일 시나리오를 `cross_guard_silent_dependency/` fixture A/B 로 자동 회귀 테스트화 — 영구 fix env on 시 fallback 동작 + off 시 v1 동작 양면 검증.
+
+**검증** (Iter 3 = test-only):
+- `python3 -m pytest tests/pytest/test_guards.py -v` — 101/101 PASS (V2 on/off 양쪽).
+- `bash scripts/smoke-test.sh` — 70/70 PASS (시나리오 10~14 신규 포함).
+- `python3 -m py_compile harness/*.py hooks/*.py` — OK (Iter 3 코드 변경 없음).
+- 코드 결함 0건 — Iter 1/2 구현 정확. test 기술 일부 정정만.
+
+**비변경 (의도)**:
+- 가드 코드 (`hooks/*.py`) — Iter 2 에서 완료. Iter 3 는 test-only.
+- `harness/*.py` — Iter 1/2 에서 완료. Iter 3 변경 없음.
+- spec/architecture/rationale 문서 — Iter 1 에서 완료. invariant 변경 없음.
+- `[invariant-shift]` PR 토큰 — spec §0 미사용 기준(test-only, invariant wording/model/scope 변경 없음)에 해당.
+
+**Linked**:
+- Issue #13 — Phase 2 Guard Model Realignment 마지막 Iter.
+- PR #14 (Iter 1, 13.1) — W1+W3.
+- PR #15 (Iter 2, 13.2) — W2+W4.
+- `tests/pytest/test_guards.py` — W5 1차 산출물.
+- `docs/guard-catalog.md` (13.1) ↔ test 케이스 18 REQ 매핑.
+- `docs/impl/13-guard-realignment.md` — W5 작업 분해 완료.
 
 **Exception**: —
 
