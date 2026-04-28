@@ -193,3 +193,105 @@ def format_report(result: dict) -> str:
     if result["warned"]:
         parts.append(f"{len(result['warned'])} kept (manual review)")
     return "[HARNESS] worktree sweep: " + ", ".join(parts)
+
+
+# ── #35: Orphaned untracked sweep — pull-conflict 방지 ─────────────────
+#
+# architect/qa 가 main repo working dir 에 plan 파일을 untracked 로 떨궈두면,
+# HARNESS-CHG-26 가 해당 파일을 worktree 로 복사 → PR squash merge 후
+# main repo 의 untracked 사본이 origin/main 의 tracked 사본과 path 충돌 →
+# `git pull` fast-forward 실패. harness merge / 사용자 수동 merge 둘 다 발생.
+#
+# 해법: SessionStart 에서 git fetch 후, untracked 중 origin/<default> 의 신규
+# tracked 파일과 path 일치하면 *content 동일 시* 자동 삭제. content 다르면
+# 경고만 (사용자 수정 보호).
+
+
+def _fetch_default(cwd: str, default: str) -> bool:
+    """origin/<default> 갱신. 실패 시 silent (오프라인/원격 없음)."""
+    r = _run(["git", "fetch", "--quiet", "origin", default], cwd=cwd, timeout=15)
+    return r.returncode == 0
+
+
+def _untracked_paths(cwd: str) -> list[str]:
+    r = _run(["git", "ls-files", "--others", "--exclude-standard"], cwd=cwd)
+    if r.returncode != 0:
+        return []
+    return [line for line in r.stdout.splitlines() if line.strip()]
+
+
+def _newly_added_in_origin(default: str, cwd: str) -> set[str]:
+    """origin/<default> 에는 있는데 local HEAD 엔 없는 파일 (Added)."""
+    r = _run(
+        ["git", "diff", "--name-only", "--diff-filter=A",
+         f"HEAD..origin/{default}"],
+        cwd=cwd,
+    )
+    if r.returncode != 0:
+        return set()
+    return {line for line in r.stdout.splitlines() if line.strip()}
+
+
+def _content_matches_origin(path: str, default: str, cwd: str) -> bool:
+    """untracked 파일 내용 == origin/<default>:<path> 내용?"""
+    r = _run(["git", "show", f"origin/{default}:{path}"], cwd=cwd)
+    if r.returncode != 0:
+        return False
+    try:
+        local_content = (Path(cwd) / path).read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return r.stdout == local_content
+
+
+def sweep_orphaned_untracked(cwd: Optional[str] = None, fetch: bool = True) -> dict:
+    """origin/<default> 에 머지된 path 의 untracked 사본 정리.
+
+    cwd: main repo root.
+    fetch: True 면 git fetch 선행 (default). False 면 기존 origin ref 사용.
+    반환: {"removed": [path...], "warned": [{"path", "reason"}, ...]}
+    """
+    cwd_str = str(Path(cwd).resolve()) if cwd else str(Path.cwd().resolve())
+    result = {"removed": [], "warned": []}
+
+    default = _default_branch(cwd_str)
+
+    if fetch:
+        _fetch_default(cwd_str, default)  # 실패 silent
+
+    untracked = _untracked_paths(cwd_str)
+    if not untracked:
+        return result
+
+    newly_added = _newly_added_in_origin(default, cwd_str)
+    if not newly_added:
+        return result
+
+    for path in untracked:
+        if path not in newly_added:
+            continue
+        if _content_matches_origin(path, default, cwd_str):
+            try:
+                (Path(cwd_str) / path).unlink()
+                result["removed"].append(path)
+            except OSError as e:
+                result["warned"].append({"path": path, "reason": f"unlink failed: {e}"})
+        else:
+            result["warned"].append({
+                "path": path,
+                "reason": "local content differs from origin (manual review)",
+            })
+
+    return result
+
+
+def format_orphaned_report(result: dict) -> str:
+    """untracked sweep 한 줄 보고."""
+    if not result["removed"] and not result["warned"]:
+        return ""
+    parts = []
+    if result["removed"]:
+        parts.append(f"removed {len(result['removed'])} orphaned untracked")
+    if result["warned"]:
+        parts.append(f"{len(result['warned'])} kept (manual review)")
+    return "[HARNESS] untracked sweep: " + ", ".join(parts)
