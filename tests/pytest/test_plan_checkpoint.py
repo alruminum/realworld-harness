@@ -18,7 +18,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from harness.core import StateDir  # noqa: E402
-from harness.plan_loop import save_plan_checkpoint  # noqa: E402
+from harness.plan_loop import (  # noqa: E402
+    compute_file_hash,
+    load_plan_checkpoint,
+    save_plan_checkpoint,
+)
 
 
 @pytest.fixture
@@ -123,3 +127,106 @@ class TestREQ006Jajang133Regression:
         assert meta.get("prd_path") == "/proj/prd.md"
         # ux_flow_doc 은 아직 없으므로 ux-architect 부터 재시도 가능
         assert "ux_flow_doc" not in meta
+
+
+# ── REQ-007: hash 계산 helper ──────────────────────────────────────
+
+class TestREQ007FileHash:
+    def test_existing_file_returns_sha256(self, tmp_path: Path):
+        f = tmp_path / "x.md"
+        f.write_text("hello\n")
+        h = compute_file_hash(f)
+        # sha256("hello\n") = 5891b5b...
+        assert len(h) == 64
+        assert h == "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03"
+
+    def test_missing_file_returns_empty(self, tmp_path: Path):
+        assert compute_file_hash(tmp_path / "nope.md") == ""
+
+    def test_content_changes_change_hash(self, tmp_path: Path):
+        f = tmp_path / "x.md"
+        f.write_text("v1")
+        h1 = compute_file_hash(f)
+        f.write_text("v2")
+        h2 = compute_file_hash(f)
+        assert h1 != h2
+        assert len(h1) == 64 and len(h2) == 64
+
+
+# ── REQ-008: hash 기반 무효화 — plan_review_passed_for ──────────────
+
+class TestREQ008PlanReviewHashCheckpoint:
+    def test_save_then_load_preserves_hash(self, state_dir: StateDir, tmp_path: Path):
+        prd = tmp_path / "prd.md"
+        prd.write_text("v1")
+        prd_hash = compute_file_hash(prd)
+
+        save_plan_checkpoint(
+            state_dir, "jajang", str(prd), "133",
+            plan_review_passed_for=prd_hash,
+        )
+
+        meta = load_plan_checkpoint(state_dir, "jajang")
+        assert meta["plan_review_passed_for"] == prd_hash
+        assert meta["prd_hash"] == prd_hash  # 자동 기록도 됨
+
+    def test_prd_change_invalidates_match(self, state_dir: StateDir, tmp_path: Path):
+        prd = tmp_path / "prd.md"
+        prd.write_text("v1")
+        h1 = compute_file_hash(prd)
+        save_plan_checkpoint(state_dir, "jajang", str(prd), "133",
+                             plan_review_passed_for=h1)
+
+        # PRD 수정
+        prd.write_text("v2 — 큰 변경")
+        h2 = compute_file_hash(prd)
+        assert h1 != h2
+
+        # save 다시 호출 (다음 실행 진입 시)
+        save_plan_checkpoint(state_dir, "jajang", str(prd), "133")
+        meta = load_plan_checkpoint(state_dir, "jajang")
+
+        # plan_review_passed_for 는 이전 값 보존 (merge), prd_hash 는 갱신
+        assert meta["plan_review_passed_for"] == h1  # 이전 PASS hash
+        assert meta["prd_hash"] == h2  # 현재 PRD hash
+        # plan_loop 이 비교 시 불일치 → reviewer 재실행
+
+
+# ── REQ-009: hash 기반 무효화 — ux_validation_passed_for ────────────
+
+class TestREQ009UxValidationHashCheckpoint:
+    def test_save_then_load_preserves_ux_hash(self, state_dir: StateDir, tmp_path: Path):
+        prd = tmp_path / "prd.md"
+        prd.write_text("prd")
+        ux = tmp_path / "ux.md"
+        ux.write_text("ux v1")
+        ux_hash = compute_file_hash(ux)
+
+        save_plan_checkpoint(
+            state_dir, "jajang", str(prd), "133", str(ux),
+            plan_review_passed_for=compute_file_hash(prd),
+            ux_validation_passed_for=ux_hash,
+        )
+        meta = load_plan_checkpoint(state_dir, "jajang")
+        assert meta["ux_validation_passed_for"] == ux_hash
+        assert meta["ux_flow_hash"] == ux_hash
+
+
+# ── REQ-010: merge=True default 보존 ───────────────────────────────
+
+class TestREQ010MergeBehavior:
+    def test_merge_preserves_unrelated_keys(self, state_dir: StateDir, tmp_path: Path):
+        prd = tmp_path / "prd.md"
+        prd.write_text("p")
+        h = compute_file_hash(prd)
+
+        # 1차 — plan_review_passed_for 기록
+        save_plan_checkpoint(state_dir, "jajang", str(prd), "133",
+                             plan_review_passed_for=h)
+        # 2차 — issue_num 만 갱신 (다른 키 명시 X)
+        save_plan_checkpoint(state_dir, "jajang", str(prd), "133-v2")
+
+        meta = load_plan_checkpoint(state_dir, "jajang")
+        # plan_review_passed_for 보존, issue_num 갱신
+        assert meta["plan_review_passed_for"] == h
+        assert meta["issue_num"] == "133-v2"

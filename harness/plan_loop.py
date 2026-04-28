@@ -33,26 +33,76 @@ except ImportError:
     from tracker import format_ref
 
 
+def compute_file_hash(path: str | Path) -> str:
+    """파일 내용 sha256 hex digest. 부재/읽기 실패 시 빈 문자열.
+
+    plan-reviewer / ux-validation 게이트 skip 판정의 입력 무효화 키로 사용.
+    """
+    import hashlib as _hashlib
+    try:
+        p = Path(path)
+        if not p.is_file():
+            return ""
+        return _hashlib.sha256(p.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+def load_plan_checkpoint(state_dir: StateDir, prefix: str) -> dict:
+    """체크포인트 파일 read. 부재/파싱 실패 시 빈 dict."""
+    import json as _json
+    try:
+        meta_file = state_dir.path / f"{prefix}_plan_metadata.json"
+        if not meta_file.exists():
+            return {}
+        return _json.loads(meta_file.read_text(encoding="utf-8")) or {}
+    except (OSError, ValueError):
+        return {}
+
+
 def save_plan_checkpoint(
     state_dir: StateDir,
     prefix: str,
     prd_path: str,
     issue_num: str | int = "",
     ux_flow_doc: str = "",
+    *,
+    plan_review_passed_for: Optional[str] = None,
+    ux_validation_passed_for: Optional[str] = None,
+    merge: bool = True,
 ) -> bool:
     """plan 루프 진행 체크포인트 저장. ux-architect 실패 등 중간 종료에서도 PRD 보존.
 
-    state_dir.path/{prefix}_plan_metadata.json 에 prd_path/issue_num/ux_flow_doc 기록.
-    ux_flow_doc 빈 문자열이면 키 자체를 생략 (partial checkpoint).
+    keyword-only 옵션:
+    - plan_review_passed_for: plan-reviewer 가 PASS 한 시점의 PRD hash. 다음 실행
+      시 동일 hash 면 plan-reviewer 스킵.
+    - ux_validation_passed_for: ux-validation 가 PASS 한 시점의 ux-flow hash. 다음
+      실행 시 동일 hash 면 ux-validation 스킵.
+    - merge: True (default) 면 기존 체크포인트와 병합 (이전 hash 등 보존).
+      False 면 전체 덮어쓰기.
 
     반환: True 성공 / False 쓰기 실패.
     """
     import json as _json
     if not prd_path:
         return False
-    meta = {"prd_path": prd_path, "issue_num": issue_num}
+    meta = load_plan_checkpoint(state_dir, prefix) if merge else {}
+    meta["prd_path"] = prd_path
+    meta["issue_num"] = issue_num
     if ux_flow_doc:
         meta["ux_flow_doc"] = ux_flow_doc
+    # PRD/ux-flow 현재 hash 도 함께 기록 (감사용 + 다음 실행 시 비교 키)
+    prd_hash = compute_file_hash(prd_path)
+    if prd_hash:
+        meta["prd_hash"] = prd_hash
+    if ux_flow_doc:
+        ux_hash = compute_file_hash(ux_flow_doc)
+        if ux_hash:
+            meta["ux_flow_hash"] = ux_hash
+    if plan_review_passed_for is not None:
+        meta["plan_review_passed_for"] = plan_review_passed_for
+    if ux_validation_passed_for is not None:
+        meta["ux_validation_passed_for"] = ux_validation_passed_for
     try:
         (state_dir.path / f"{prefix}_plan_metadata.json").write_text(
             _json.dumps(meta, ensure_ascii=False, indent=2),
@@ -198,6 +248,12 @@ def run_plan(
     # UX 저니 차원은 PRD의 '화면 인벤토리 + 대략적 플로우' 섹션으로 고수준 판정 가능.
     # 상세 UX 형식 체크는 이후 validator(UX)가 담당.
     _override_flag = state_dir.path / f"{prefix}_plan_review_override"
+    # 입력 hash 기반 skip — 직전 PASS 시점 PRD hash 와 동일하면 재실행 비용 절약.
+    # PRD 가 외부에서 수정되면 hash 변경 → 자동 무효화 → 재실행.
+    _current_prd_hash = compute_file_hash(prd_path) if prd_path else ""
+    _passed_for = _prev_meta.get("plan_review_passed_for", "")
+    _hash_skip = bool(_current_prd_hash) and _current_prd_hash == _passed_for
+
     if _override_flag.exists():
         hud.agent_skip("plan-reviewer", "user override 선택")
         print("[HARNESS] plan-reviewer 스킵 (유저 override 플래그)")
@@ -205,6 +261,9 @@ def run_plan(
             _override_flag.unlink()  # 1회성 — 다음 런에는 다시 리뷰
         except OSError:
             pass
+    elif _hash_skip:
+        hud.agent_skip("plan-reviewer", f"checkpoint: hash {_current_prd_hash[:8]}…")
+        print(f"[HARNESS] plan-reviewer 스킵 (PRD hash 일치 — 직전 PASS 재사용)")
     else:
         print("[HARNESS] plan-reviewer 판단 게이트 (PRD 기반)")
         _pr_t0 = time.time()
@@ -260,7 +319,11 @@ def run_plan(
     # 체크포인트: plan-reviewer PASS 직후 partial metadata 저장 (ux_flow_doc 아직 없음).
     # 이후 ux-architect/ux-validation 실패 시에도 PRD 체크포인트 보존 → 재실행 시
     # planner 가 처음부터 안 돌고 ux 단계부터 재시도 가능.
-    save_plan_checkpoint(state_dir, prefix, prd_path, issue_num)
+    # plan_review_passed_for=현재 PRD hash 기록 → 다음 런에서 hash 일치 시 reviewer 스킵.
+    save_plan_checkpoint(
+        state_dir, prefix, prd_path, issue_num,
+        plan_review_passed_for=_current_prd_hash,
+    )
 
     # ================================================================
     # 3. UI 여부 판단 -> ux-architect 호출 or 스킵
@@ -273,12 +336,27 @@ def run_plan(
     # 기존 프로젝트 첫 리뷰에서 docs/ux-flow.md가 있어도 ux-architect는 자체 체크포인트로
     # UX_FLOW_READY 빠르게 리턴 가능.
     _prev_ux = _prev_meta.get("ux_flow_doc", "")
-    if _prev_ux and Path(_prev_ux).exists():
-        print(f"[HARNESS] 체크포인트: ux-flow.md 존재 ({_prev_ux}) -- ux-architect 스킵")
+    # ux-architect skip 은 ux-flow.md 존재 + 그 시점 PRD hash == 현재 PRD hash 일 때만.
+    # PRD 변경 시 stale ux-flow 보호 — ux-flow 가 옛 PRD 기준이면 재생성 필요.
+    # plan_review_passed_for 가 ux-architect 입력 PRD hash 와 같음 (reviewer 직후 ux 진입).
+    _prev_ux_input_hash = _prev_meta.get("plan_review_passed_for", "") or _prev_meta.get("prd_hash", "")
+    _ux_input_match = (
+        bool(_current_prd_hash)
+        and bool(_prev_ux_input_hash)
+        and _current_prd_hash == _prev_ux_input_hash
+    )
+
+    if _prev_ux and Path(_prev_ux).exists() and _ux_input_match:
+        print(f"[HARNESS] 체크포인트: ux-flow.md 존재 + PRD hash 일치 ({_prev_ux}) -- ux-architect 스킵")
         hud.agent_skip("ux-architect", f"checkpoint: {_prev_ux}")
         _skip_uxa = True
         ux_flow_doc = _prev_ux
+    elif _prev_ux and Path(_prev_ux).exists():
+        # ux-flow 는 있지만 PRD 변경됨 — stale 위험으로 재생성
+        print(f"[HARNESS] ux-flow 존재하지만 PRD 변경 감지 ({_prev_ux_input_hash[:8] or 'none'}…→{_current_prd_hash[:8]}…) -- ux-architect 재실행")
     else:
+        pass  # 기존 흐름 진입 (UI 여부 판단 등)
+    if not _skip_uxa:
         # PRD 화면 인벤토리 비어있는지 확인 -> UI 없는 기능이면 스킵
         _has_ui = True
         if prd_path and Path(prd_path).exists():
@@ -408,28 +486,42 @@ def run_plan(
         # ================================================================
         # 4. validator UX Validation
         # ================================================================
+        # 입력 hash 기반 skip — 직전 PASS 시점 ux-flow hash 동일하면 재실행 비용 절약.
+        _current_ux_hash = compute_file_hash(ux_flow_doc) if ux_flow_doc else ""
+        _ux_passed_for = _prev_meta.get("ux_validation_passed_for", "")
+        _ux_hash_skip = bool(_current_ux_hash) and _current_ux_hash == _ux_passed_for
+
         if ux_flow_doc and Path(ux_flow_doc).exists():
-            print(f"[HARNESS] UX Validation (ux_flow_doc: {ux_flow_doc})")
-            _uxv_t0 = time.time()
-            hud.agent_start("ux-validation")
-            if not run_ux_validation(ux_flow_doc, prd_path, issue_num, prefix, 1, state_dir, run_logger, config):
-                hud.agent_done("ux-validation", int(time.time() - _uxv_t0), 0.0, "fail")
-                os.environ["HARNESS_RESULT"] = "UX_REVIEW_ESCALATE"
-                print("[HARNESS] ux-validation -> UX_REVIEW_ESCALATE")
-                print(f"ux_flow_doc: {ux_flow_doc}")
-                run_logger.write_run_end("UX_REVIEW_ESCALATE", "", issue_num)
-                return "UX_REVIEW_ESCALATE"
-            hud.agent_done("ux-validation", int(time.time() - _uxv_t0), 0.0)
-            print("[HARNESS] ux-validation -> PASS")
+            if _ux_hash_skip:
+                hud.agent_skip("ux-validation", f"checkpoint: hash {_current_ux_hash[:8]}…")
+                print(f"[HARNESS] ux-validation 스킵 (ux-flow hash 일치 — 직전 PASS 재사용)")
+            else:
+                print(f"[HARNESS] UX Validation (ux_flow_doc: {ux_flow_doc})")
+                _uxv_t0 = time.time()
+                hud.agent_start("ux-validation")
+                if not run_ux_validation(ux_flow_doc, prd_path, issue_num, prefix, 1, state_dir, run_logger, config):
+                    hud.agent_done("ux-validation", int(time.time() - _uxv_t0), 0.0, "fail")
+                    os.environ["HARNESS_RESULT"] = "UX_REVIEW_ESCALATE"
+                    print("[HARNESS] ux-validation -> UX_REVIEW_ESCALATE")
+                    print(f"ux_flow_doc: {ux_flow_doc}")
+                    run_logger.write_run_end("UX_REVIEW_ESCALATE", "", issue_num)
+                    return "UX_REVIEW_ESCALATE"
+                hud.agent_done("ux-validation", int(time.time() - _uxv_t0), 0.0)
+                print("[HARNESS] ux-validation -> PASS")
         else:
             hud.agent_skip("ux-validation", "ux_flow_doc 미감지")
             print("[HARNESS] ux-validation 스킵 (ux_flow_doc 경로 미감지)")
         kill_check(state_dir)
 
     # ================================================================
-    # 완료 -- 메타데이터 저장 (full: prd_path + ux_flow_doc)
+    # 완료 -- 메타데이터 저장 (full: prd_path + ux_flow_doc + 양 게이트 hash)
     # ================================================================
-    save_plan_checkpoint(state_dir, prefix, prd_path, issue_num, ux_flow_doc)
+    _final_ux_hash = compute_file_hash(ux_flow_doc) if ux_flow_doc else ""
+    save_plan_checkpoint(
+        state_dir, prefix, prd_path, issue_num, ux_flow_doc,
+        plan_review_passed_for=_current_prd_hash,
+        ux_validation_passed_for=_final_ux_hash if _final_ux_hash else None,
+    )
 
     # UI 없는 기능이면 UX_SKIP 반환
     if _skip_uxa and not ux_flow_doc:
