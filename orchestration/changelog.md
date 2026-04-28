@@ -55,6 +55,7 @@
 | `HARNESS-CHG-20260428-09` | 2026-04-28 | infra | [9.1] parse_marker alias map — LLM 변형(PLAN_LGTM/PLAN_OK/PLAN_APPROVE/APPROVE/REJECT 등) → canonical 흡수. 3차 폴백 + stderr 경고. agent docs 강화로 안 풀린 PLAN_OK/APPROVE 사례(jajang 2026-04-28) defense in depth | — |
 | `HARNESS-CHG-20260428-10` | 2026-04-28 | infra | [10.1] migration audit cleanup — notify.py:19 CLI 예시 + plugin-write-guard:83 + settings-watcher:42,54 메시지 + README §C 신규 사용자 혼동 차단 (4건 일괄, MCP graceful 별도 검토) | — |
 | `HARNESS-CHG-20260428-11` | 2026-04-28 | infra | [11.1] `--force-retry` 확장 — escalate_history 도 청소 (false failure 누적 후 retry 시 manual JSON 편집 불필요) + auto_spec_gap 메시지에 복구 안내 추가 | — |
+| `HARNESS-CHG-20260428-12` | 2026-04-28 | infra | [12.1] PLUGIN_ROOT `__file__` self-detect — env 미설정 시 `~/.claude` 폴백(post-migration 무효) 대신 `${plugin}/harness/core.py` 위치에서 root 추론. session_state import 안정화 (jajang 사례 — bash `${VAR:-...}` path 확장은 env export 아님) | — |
 
 ---
 
@@ -676,6 +677,54 @@ RWHarness commands/harness-review.md:21 → ~/.claude/scripts/harness-review.py 
 **Linked**:
 - jajang 사례 (2026-04-28) `executor impl --impl ...` 후 architect 자동 발동
 - `HARNESS-CHG-20260428-09` (PR #9) — alias map 도입 (이번 false failure 의 원인 fix). 본 PR 은 그 fix 후 stale state 청소 수단
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-12` — 2026-04-28 — PLUGIN_ROOT __file__ self-detect
+
+**Type**: infra (harness/core.py + executor.py + smoke-test.sh)
+
+**Branch**: `harness/plugin-root-self-detect`
+
+**Issue**: jajang 실측 — agent_call 호출 시 `[HARNESS] session_state 로드 실패: No module named 'session_state'` 반복. functional 영향: live.json.agent 미기록 → ISSUE_CREATORS 활성 체크 실패 → designer 등 일부 흐름 stuck 가능.
+
+**근본 원인**:
+- `PLUGIN_ROOT = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or str(Path.home() / ".claude"))`
+- 사용자가 bash 에서 `${CLAUDE_PLUGIN_ROOT:-...}/harness/executor.py` 형태 호출 시
+- bash 의 `${VAR:-default}` 는 *path 확장만* 함, env export 아님
+- → Python 이 env 미설정 봄 → 폴백 `~/.claude/hooks/` 시도 → 마이그레이션이 삭제한 경로 → import fail
+
+**[12.1] 자기-감지 폴백** (`harness/core.py` + `executor.py`):
+```python
+def _resolve_plugin_root() -> Path:
+    env = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if env:
+        return Path(env)
+    # __file__ = ${PLUGIN_ROOT}/harness/core.py — 위치에서 root 추론
+    here = Path(__file__).resolve()
+    if here.parent.name == "harness":
+        return here.parent.parent
+    return Path.home() / ".claude"  # legacy fallback
+```
+
+**[12.2] smoke-test.sh §3 갱신**:
+- 폴백 검증 expected: `~/.claude` → `__file__` 기반 (실제 RWHarness root)
+- session_state import 통합 테스트 추가 — env 미설정 + 폴백 시 hooks/session_state 로드 가능 확인
+
+**검증**:
+- `python3 -c "..."` env 미설정 + 명시 둘 다 정확
+- `bash scripts/smoke-test.sh` — 56→57 PASS (신규 session_state 테스트 추가)
+- `python3 -m unittest tests.pytest.test_tracker` — 44/44 OK
+
+**비변경 (의도)**:
+- `CLAUDE_PLUGIN_ROOT` env 우선순위 보존 — Claude Code 가 플러그인 hooks/agents 호출 시 자동 set 하는 정상 흐름 유지
+- legacy `~/.claude` 폴백 보존 — 매우 예외적 케이스 (script 가 비표준 위치) 대비
+
+**Linked**:
+- jajang 사례 (2026-04-28) — agent_call session_state 로드 실패
+- migration audit (PR #7) 의 *코드 내부* path 후속 — audit 가 user-facing path 만 잡고 코드 내부 PLUGIN_ROOT 폴백은 놓쳤었음
 
 **Exception**: —
 

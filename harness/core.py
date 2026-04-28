@@ -23,10 +23,29 @@ except ImportError:
     from config import HarnessConfig, load_config
     from tracker import format_ref, parse_ref, get_tracker_for
 
-# Plugin root resolution — CLAUDE_PLUGIN_ROOT env에 폴백 ~/.claude.
-# 플러그인 마켓플레이스 설치 시 CLAUDE_PLUGIN_ROOT 가 자동 set됨.
+# Plugin root resolution — 우선순위:
+#   1. CLAUDE_PLUGIN_ROOT env (Claude Code 가 플러그인 호출 시 자동 set)
+#   2. `__file__` 기반 자기-감지 (이 파일이 ${PLUGIN_ROOT}/harness/core.py 위치라는 사실 활용)
+#   3. legacy 폴백 ~/.claude (마이그레이션 전 source 모드, post-migration 무효이지만 보존)
+#
+# Why: 사용자가 bash 에서 `${CLAUDE_PLUGIN_ROOT:-...}/harness/executor.py` 형태로 호출 시
+# bash 가 path 만 확장하고 env 는 export 안 함 → Python 이 env 미설정 봄 → 옛 폴백
+# `~/.claude/hooks/` 시도 → 마이그레이션이 삭제한 경로 → `import session_state` 실패.
+# `__file__` 기반 감지가 정확하면서 env 의존성 제거 (HARNESS-CHG-20260428-12).
 # 개발 환경(직접 ~/.claude 사용) 시 폴백.
-PLUGIN_ROOT = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or str(Path.home() / ".claude"))
+def _resolve_plugin_root() -> Path:
+    """플러그인 루트 해석. env > __file__ self-detect > legacy fallback."""
+    env = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if env:
+        return Path(env)
+    # __file__ = ${PLUGIN_ROOT}/harness/core.py
+    here = Path(__file__).resolve()
+    if here.parent.name == "harness":
+        return here.parent.parent
+    return Path.home() / ".claude"
+
+
+PLUGIN_ROOT = _resolve_plugin_root()
 
 # ═══════════════════════════════════════════════════════════════════════
 # 1. StateDir — 상태 파일 관리 (init_state_dir + flag_touch/rm/exists)
