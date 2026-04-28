@@ -291,7 +291,10 @@ def run_automated_checks(
     # (b) 커밋된 변경: git diff main..HEAD (SPEC_GAP 후 early commit 감지)
     has_committed = False
     if not has_uncommitted:
-        from .path_resolver import engineer_scope_pathspecs
+        try:
+            from .path_resolver import engineer_scope_pathspecs
+        except ImportError:
+            from path_resolver import engineer_scope_pathspecs
         _pathspecs = engineer_scope_pathspecs()  # v1 fallback: ["src/"]
         r_diff = _run(
             ["git", "diff", "main..HEAD", "--name-only", "--"] + _pathspecs,

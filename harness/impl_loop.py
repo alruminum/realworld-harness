@@ -989,7 +989,10 @@ def _run_std_deep(
                 print("[HARNESS] test-engineer TDD -> TESTS_WRITTEN")
                 try:
                     _te_content = Path(te_tdd_out).read_text(encoding="utf-8", errors="replace")
-                    from .path_resolver import test_paths_extract_regex
+                    try:
+                        from .path_resolver import test_paths_extract_regex
+                    except ImportError:
+                        from path_resolver import test_paths_extract_regex
                     _tdd_test_files = " ".join(
                         m.group(0) for m in test_paths_extract_regex().finditer(_te_content)
                     )
