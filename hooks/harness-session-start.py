@@ -169,7 +169,12 @@ def main():
     # 사용자 수동 `gh pr merge` 로 머지된 케이스에서 WorktreeManager.remove() 가
     # 호출 안 되어 worktree 가 누적되는 문제 해결. unpushed commit 있으면 skip.
     try:
-        from worktree_sweep import sweep as _wt_sweep, format_report as _wt_report
+        from worktree_sweep import (
+            sweep as _wt_sweep,
+            format_report as _wt_report,
+            sweep_orphaned_untracked as _ut_sweep,
+            format_orphaned_report as _ut_report,
+        )
         _wt_result = _wt_sweep()
         _wt_msg = _wt_report(_wt_result)
         if _wt_msg:
@@ -177,6 +182,17 @@ def main():
             for w in _wt_result.get("warned", []):
                 print(f"  - keep: {w['path']} ({w['branch']}) — {w['reason']}",
                       file=sys.stderr)
+
+        # ── #35: orphaned untracked sweep — pull-conflict 방지 ─────────
+        # architect plan 등이 main repo 에 untracked 로 남고, worktree PR 이
+        # 같은 path 를 머지하면 fast-forward pull 충돌. content 동일 시 untracked
+        # 사본 자동 삭제 (origin 의 tracked 가 정본). 다르면 경고만.
+        _ut_result = _ut_sweep()
+        _ut_msg = _ut_report(_ut_result)
+        if _ut_msg:
+            print(_ut_msg, file=sys.stderr)
+            for w in _ut_result.get("warned", []):
+                print(f"  - keep: {w['path']} — {w['reason']}", file=sys.stderr)
     except Exception:
         pass
 
