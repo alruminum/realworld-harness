@@ -1826,14 +1826,20 @@ def extract_src_refs(filepath: str | Path) -> List[str]:
         content = Path(filepath).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
-    from .path_resolver import engineer_scope_extract_regex
+    try:
+        from .path_resolver import engineer_scope_extract_regex
+    except ImportError:
+        from path_resolver import engineer_scope_extract_regex
     matches = engineer_scope_extract_regex().findall(content)
     return sorted(set(matches))[:5]
 
 
 def extract_files_from_error(error_text: str) -> List[str]:
     """error trace에서 src/ 경로 역추적."""
-    from .path_resolver import engineer_scope_extract_regex
+    try:
+        from .path_resolver import engineer_scope_extract_regex
+    except ImportError:
+        from path_resolver import engineer_scope_extract_regex
     matches = engineer_scope_extract_regex().findall(error_text)
     return sorted(set(matches))[:5]
 
@@ -1916,7 +1922,10 @@ def build_loop_context(loop_type: str) -> str:
         ctx += "\n=== .env 존재 ===\n(.env 파일 있음 — 내용 생략)"
 
     if loop_type == "design":
-        from .path_resolver import ui_components_paths
+        try:
+            from .path_resolver import ui_components_paths
+        except ImportError:
+            from path_resolver import ui_components_paths
         comps_all: list = []
         for comp_dir_s in ui_components_paths():
             comp_dir = Path(comp_dir_s)

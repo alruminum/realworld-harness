@@ -49,7 +49,10 @@ def _load_cfg():
     if cache_key in _CACHE:
         return _CACHE[cache_key]
     try:
-        from .config import load_config  # type: ignore[import]
+        try:
+            from .config import load_config  # type: ignore[import]
+        except ImportError:
+            from config import load_config  # type: ignore[import]
         cfg = load_config()
     except Exception as e:
         sys.stderr.write(f"[path_resolver] WARN: config load fail ({e}); v1 fallback\n")

@@ -316,7 +316,10 @@ def run_impl(
                         keywords = re.findall(r"[a-zA-Z가-힣]{2,}", issue_title)[:5]
                         if keywords:
                             kw_pattern = "|".join(re.escape(k) for k in keywords)
-                            from .path_resolver import engineer_scope_grep_paths
+                            try:
+                                from .path_resolver import engineer_scope_grep_paths
+                            except ImportError:
+                                from path_resolver import engineer_scope_grep_paths
                             _grep_paths = engineer_scope_grep_paths() or ["src/"]
                             r = subprocess.run(
                                 ["grep", "-rlE", kw_pattern] + _grep_paths,
