@@ -97,9 +97,9 @@
 
 ## 출력 형식
 
-```
-[PASS / FAIL]
+마커는 **출력 마지막 줄에 정형(`---MARKER:PASS---` 또는 `---MARKER:FAIL---`)** 으로 둔다. `LGTM` / `CODE_PASS` / 변형 금지 — preamble.md 의 다른 에이전트 예시와 혼동하지 말 것. 정확한 글자만 사용해야 `parse_marker` 가 인식한다.
 
+```
 ### A. 스펙 일치
 | 항목 | 결과 | 비고 |
 |---|---|---|
@@ -122,4 +122,8 @@
 
 ### 권고사항 (PASS 시에도 개선 여지 있으면 기술)
 - ...
+
+---MARKER:PASS---
 ```
+
+> PASS 일 땐 `---MARKER:PASS---`, FAIL 일 땐 `---MARKER:FAIL---`. SPEC_MISSING 시에는 `---MARKER:SPEC_MISSING---`. *둘/셋 중 하나만* 마지막 줄에.

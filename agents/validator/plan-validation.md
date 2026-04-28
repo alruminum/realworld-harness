@@ -63,9 +63,9 @@
 
 ### 출력 형식
 
-```
-PLAN_VALIDATION_PASS / PLAN_VALIDATION_FAIL
+마커는 **출력 마지막 줄에 정형(`---MARKER:PLAN_VALIDATION_PASS---` 또는 `---MARKER:PLAN_VALIDATION_FAIL---`)** 으로 둔다. `PLAN_LGTM` / `LGTM` / `PASS` 같은 변형 금지 — preamble.md 의 다른 에이전트 예시(LGTM 은 pr-reviewer 용) 와 혼동하지 말 것. 정확한 글자만 사용해야 `parse_marker` 가 인식한다.
 
+```
 ### A. 구현 충분성
 | 항목 | 결과 | 비고 |
 |---|---|---|
@@ -89,4 +89,8 @@ PLAN_VALIDATION_PASS / PLAN_VALIDATION_FAIL
 ### FAIL 원인 요약 (FAIL 시만)
 1. [구체적 미충족 항목 + 보강 요청]
 2. ...
+
+---MARKER:PLAN_VALIDATION_PASS---
 ```
+
+> PASS 일 땐 `---MARKER:PLAN_VALIDATION_PASS---`, FAIL 일 땐 `---MARKER:PLAN_VALIDATION_FAIL---` 로 마지막 줄을 채운다. *둘 중 하나만* 출력 (택일).
