@@ -40,19 +40,28 @@ def main():
 
     cmd = d.get("tool_input", {}).get("command", "")
 
-    # ── Gate 1: gh issue create/edit 직접 호출 차단 ────────────────────────
+    # ── Gate 1: 추적 이슈 변경 명령 직접 호출 차단 ──────────────────────
     # QA/designer 에이전트만 이슈를 생성/수정할 수 있다. 메인 Claude 직접 호출 금지.
+    # 가드 대상:
+    #   - gh issue create/edit (직접 CLI)
+    #   - gh api ... issues ... POST/PATCH
+    #   - python3 -m harness.tracker create-issue / comment (추적 ID 추상화 CLI)
+    #     → 백엔드(github/local) 무관하게 동일하게 가드 (HARNESS-CHG-20260428-01).
     _IS_GH_ISSUE_MUTATE = (
         re.search(r"gh\s+issue\s+(create|edit)", cmd)
         or re.search(r"gh\s+api\s+.*issues.*--method\s+POST", cmd)
         or re.search(r"gh\s+api\s+.*issues.*-X\s+(POST|PATCH)", cmd)
         or re.search(r"gh\s+api\s+.*issues/\d+.*-X\s+PATCH", cmd)
+        or re.search(r"harness\.tracker\s+(create-issue|comment)", cmd)
+        or re.search(r"harness/tracker\.py\s+(create-issue|comment)", cmd)
     )
     if _IS_GH_ISSUE_MUTATE and os.environ.get("HARNESS_INTERNAL") != "1" and not _is_issue_creator_active(d):
         deny(
-            "❌ [hooks/commit-gate.py] gh issue create/edit 직접 호출 금지.\n"
+            "❌ [hooks/commit-gate.py] 추적 이슈 변경 명령 직접 호출 금지.\n"
             "이슈 생성/수정은 QA 에이전트가, 디자인 이슈는 designer 에이전트가 처리한다.\n"
-            f"올바른 흐름: /qa 스킬 → QA 에이전트 분석·이슈 생성/수정 → python3 executor.py impl --issue <N> --prefix {PREFIX}"
+            "차단된 명령 형식: gh issue create/edit, gh api issues POST/PATCH, "
+            "python3 -m harness.tracker create-issue|comment.\n"
+            f"올바른 흐름: /qa 스킬 → QA 에이전트 분석·이슈 생성/수정 → python3 executor.py impl --issue <REF> --prefix {PREFIX}"
         )
 
     # ── Gate 2: (removed in v6 — bugfix 모드 제거에 따라 is_bug 게이트 삭제)

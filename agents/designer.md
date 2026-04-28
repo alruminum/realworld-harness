@@ -73,34 +73,35 @@ model: sonnet
 
 **건너뛰기 금지. 모든 모드에서 필수.**
 
-### 0-0. GitHub 이슈 생성 (디자인 작업 시작 전)
+### 0-0. 추적 이슈 생성 (디자인 작업 시작 전)
 
 **`skip_issue_creation: true`가 전달된 경우 이 단계를 스킵한다.** (설계 루프 경유 시)
 
-UX 스킬에서 호출된 경우, 항상 디자인 작업 전에 GitHub 이슈를 먼저 생성한다.
+UX 스킬에서 호출된 경우, 항상 디자인 작업 전에 추적 이슈를 먼저 생성한다. 백엔드(GitHub / Local) 는 `harness/tracker.py` 가 환경에 따라 자동 선택한다 — `gh` 미설치 / GitHub repo 미연결 환경에서도 LocalBackend 폴백으로 추적 ID 발급이 보장된다.
 
-1. `.claude/agent-config/designer.md` 읽기 → owner, repo, milestone 이름 확인 (없으면 `git remote get-url origin`에서 owner/repo 추출)
-2. 마일스톤 번호 조회: `gh api repos/{owner}/{repo}/milestones --jq '.[] | {number, title}'`
-3. 이슈 생성 (Bash `gh issue create` 방식):
-   **commit-gate.py가 designer_active 플래그 없으면 gh issue create를 차단한다.
-   반드시 플래그 set → 이슈 생성 → 플래그 rm 순서로 실행.**
+1. `.claude/agent-config/designer.md` 읽기 → milestone 이름 확인 (있으면 `--milestone` 인자에 사용, 없으면 생략)
+2. 추적 이슈 생성 — `python3 -m harness.tracker create-issue` 사용:
+   **commit-gate.py 가 `designer_active` 플래그 없으면 추적 이슈 생성 호출을 차단한다 (메인 Claude 우회 방지). 반드시 플래그 set → 이슈 생성 → 플래그 rm 순서로 실행.**
    ```bash
    PREFIX=$(python3 -c "import json; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix','mb'))" 2>/dev/null || echo "mb")
    FLAGS_DIR="$(pwd)/.claude/harness-state/.flags"
    mkdir -p "$FLAGS_DIR"
    touch "${FLAGS_DIR}/${PREFIX}_designer_active"
-   gh issue create \
-     --repo {owner}/{repo} \
+   python3 -m harness.tracker create-issue \
      --title "[design] {target} {ux_goal 요약}" \
      --label "design-fix" \
-     --milestone {번호} \
+     --milestone "{이름 또는 번호}" \
      --body "..."
+   # stdout 에 "#42" 또는 "LOCAL-7" 출력 — 이 값을 변수로 캡처
    rm -f "${FLAGS_DIR}/${PREFIX}_designer_active"
    ```
+3. 백엔드 확인이 필요하면 `python3 -m harness.tracker which` (현재 selected 백엔드 + 가용성 표시).
 
-생성된 이슈 번호를 기억해두고 DESIGN_HANDOFF 출력 시 함께 포함한다.
+생성된 추적 ID(`#N` 또는 `LOCAL-N`) 를 기억해두고 DESIGN_HANDOFF 출력 시 함께 포함한다. 다운스트림(architect/engineer 호출, agent-gate.py:78) 은 두 형식 모두 수용한다.
 
-> QA 경로에서 넘어온 경우(프롬프트에 기존 이슈 번호 포함) 이슈 생성 스킵. 기존 번호 사용.
+> QA 경로에서 넘어온 경우(프롬프트에 기존 추적 ID 포함) 이슈 생성 스킵. 기존 ID 사용.
+
+> 강제 백엔드 선택이 필요하면 `HARNESS_TRACKER=local python3 -m harness.tracker create-issue ...` 형태로 env 주입 가능.
 
 ### 0-1. Pencil 캔버스 읽기
 
