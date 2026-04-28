@@ -165,6 +165,21 @@ def main():
     except Exception:
         pass
 
+    # ── #36: stale worktree sweep — 외부 머지된 worktree 자동 정리 ──────
+    # 사용자 수동 `gh pr merge` 로 머지된 케이스에서 WorktreeManager.remove() 가
+    # 호출 안 되어 worktree 가 누적되는 문제 해결. unpushed commit 있으면 skip.
+    try:
+        from worktree_sweep import sweep as _wt_sweep, format_report as _wt_report
+        _wt_result = _wt_sweep()
+        _wt_msg = _wt_report(_wt_result)
+        if _wt_msg:
+            print(_wt_msg, file=sys.stderr)
+            for w in _wt_result.get("warned", []):
+                print(f"  - keep: {w['path']} ({w['branch']}) — {w['reason']}",
+                      file=sys.stderr)
+    except Exception:
+        pass
+
     # ── 탑레벨 플래그 초기화 (특정 파일은 보존) ──
     # 보존 대상:
     #   _last_issue: 최근 이슈 추적
