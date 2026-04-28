@@ -54,6 +54,7 @@
 | `HARNESS-CHG-20260428-08` | 2026-04-28 | agent | [8.1] validator sub-docs canonical 마커 — plan/code/design/bugfix-validation 출력 형식 `---MARKER:X---` 정형화 + preamble 마커명 정확도 절대 룰 추가 (PLAN_LGTM 변형 차단) | — |
 | `HARNESS-CHG-20260428-09` | 2026-04-28 | infra | [9.1] parse_marker alias map — LLM 변형(PLAN_LGTM/PLAN_OK/PLAN_APPROVE/APPROVE/REJECT 등) → canonical 흡수. 3차 폴백 + stderr 경고. agent docs 강화로 안 풀린 PLAN_OK/APPROVE 사례(jajang 2026-04-28) defense in depth | — |
 | `HARNESS-CHG-20260428-10` | 2026-04-28 | infra | [10.1] migration audit cleanup — notify.py:19 CLI 예시 + plugin-write-guard:83 + settings-watcher:42,54 메시지 + README §C 신규 사용자 혼동 차단 (4건 일괄, MCP graceful 별도 검토) | — |
+| `HARNESS-CHG-20260428-11` | 2026-04-28 | infra | [11.1] `--force-retry` 확장 — escalate_history 도 청소 (false failure 누적 후 retry 시 manual JSON 편집 불필요) + auto_spec_gap 메시지에 복구 안내 추가 | — |
 
 ---
 
@@ -631,6 +632,50 @@ RWHarness commands/harness-review.md:21 → ~/.claude/scripts/harness-review.py 
 **Linked**:
 - `HARNESS-CHG-20260428-07` (PR #7) — migration systematic audit. 본 PR 은 그 audit 의 잔존 4건 정리
 - audit 보고서 (subagent 결과, 2026-04-28)
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-11` — 2026-04-28 — `--force-retry` 확장 (escalate_history 청소)
+
+**Type**: infra (executor + impl_router)
+
+**Branch**: `harness/force-retry-clears-escalate`
+
+**Issue**: jajang 사례 — `parse_marker` alias map (PR #9) 도입 후에도 `_maybe_auto_spec_gap` 가 *과거 false failure* 2건을 보고 architect SPEC_GAP 자동 발동. 사용자가 jajang 의 `escalate_history.json` 을 수동 편집해야 unstuck.
+
+**근본 원인**:
+- `record_escalate` 가 모든 ESCALATE 를 history 에 기록 (의도)
+- `_maybe_auto_spec_gap` 가 누적 ≥ 2 면 자동 SPEC_GAP 호출 (의도)
+- 그러나 *parser bug 가 만든 false failure* 도 동일하게 누적됨 → 파서 fix 후에도 historical count 유지
+- 기존 `--force-retry` 는 `merge_cooldown` 만 청소. `escalate_history` 청소 수단 부재
+
+**[11.1] `--force-retry` 확장**:
+- `harness/executor.py:102-118` — args.force_retry 분기에서 `clear_escalate_count(state_dir, args.impl_file)` 추가 호출
+- 조건: `args.impl_file` 있을 때만 (impl-target 한정 청소, 다른 impl history 보존)
+- 메시지: `"[HARNESS] escalate history 청소: <impl_file>"`
+- argparse help 텍스트 업데이트 — "stale state 일괄 청소 (merge_cooldown + escalate_history)"
+
+**[11.2] auto_spec_gap 안내 메시지 강화**:
+- `harness/impl_router.py:64` 직후 추가 라인:
+  ```
+  [HARNESS]   ↳ 직전 ESCALATE 가 *false failure* 였다고 판단되면(예: 마커 파서
+              mismatch 후 alias map 도입) `--force-retry` 플래그로 재실행하여 history 청소.
+  ```
+
+**검증**:
+- `python3 -m py_compile harness/executor.py harness/impl_router.py` — OK
+- `bash scripts/smoke-test.sh` — 56/56 PASS
+- `python3 -m unittest tests.pytest.test_tracker` — 44/44 OK
+
+**비변경 (의도)**:
+- `record_escalate` / `_maybe_auto_spec_gap` 자체 — 정상 동작 (legitimate 누적 ESCALATE 시 architect SPEC_GAP 트리거는 가치 있음)
+- 자동 청소 로직 추가 안 함 — false vs legitimate 자동 판별 불가능 (파서 fix 시점 비교 같은 휴리스틱은 fragile)
+
+**Linked**:
+- jajang 사례 (2026-04-28) `executor impl --impl ...` 후 architect 자동 발동
+- `HARNESS-CHG-20260428-09` (PR #9) — alias map 도입 (이번 false failure 의 원인 fix). 본 PR 은 그 fix 후 stale state 청소 수단
 
 **Exception**: —
 
