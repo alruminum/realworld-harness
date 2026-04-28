@@ -309,6 +309,42 @@ class ParseMarkerAliasTests(unittest.TestCase):
         r = self.core.parse_marker(self.tmp.name, "PASS|FAIL")
         self.assertEqual(r, "FAIL")
 
+    # ── PLAN_REVIEW alias (jajang #133, 2026-04-29 사고) ─────────
+
+    def test_plan_review_lgtm_to_pass(self):
+        # jajang #133 — bare LGTM 은 의도적 미alias 지만 PLAN_REVIEW_LGTM 변형은 흡수
+        self._write("reviewer output\n---MARKER:PLAN_REVIEW_LGTM---\n")
+        r = self.core.parse_marker(self.tmp.name,
+                                   "PLAN_REVIEW_PASS|PLAN_REVIEW_CHANGES_REQUESTED")
+        self.assertEqual(r, "PLAN_REVIEW_PASS")
+
+    def test_plan_review_ok_to_pass(self):
+        self._write("reviewer output\nPLAN_REVIEW_OK\n")
+        r = self.core.parse_marker(self.tmp.name,
+                                   "PLAN_REVIEW_PASS|PLAN_REVIEW_CHANGES_REQUESTED")
+        self.assertEqual(r, "PLAN_REVIEW_PASS")
+
+    def test_plan_review_approve_to_pass(self):
+        self._write("reviewer output\nPLAN_REVIEW_APPROVE\n")
+        r = self.core.parse_marker(self.tmp.name,
+                                   "PLAN_REVIEW_PASS|PLAN_REVIEW_CHANGES_REQUESTED")
+        self.assertEqual(r, "PLAN_REVIEW_PASS")
+
+    def test_plan_review_reject_to_changes_requested(self):
+        self._write("reviewer output\n---MARKER:PLAN_REVIEW_REJECT---\n")
+        r = self.core.parse_marker(self.tmp.name,
+                                   "PLAN_REVIEW_PASS|PLAN_REVIEW_CHANGES_REQUESTED")
+        self.assertEqual(r, "PLAN_REVIEW_CHANGES_REQUESTED")
+
+    def test_bare_lgtm_NOT_aliased_in_plan_review_context(self):
+        # bare LGTM 은 pr-reviewer 정식 마커 — plan-reviewer 컨텍스트에서 alias 안 됨
+        # (의도적 충돌 회피). agent.md 강화로 1차 방어, 본 alias map 은 PLAN_REVIEW_*
+        # 변형만 흡수.
+        self._write("reviewer output\n---MARKER:LGTM---\n")
+        r = self.core.parse_marker(self.tmp.name,
+                                   "PLAN_REVIEW_PASS|PLAN_REVIEW_CHANGES_REQUESTED")
+        self.assertEqual(r, "UNKNOWN")  # 의도된 동작
+
 
 if __name__ == "__main__":
     unittest.main()

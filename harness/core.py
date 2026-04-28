@@ -593,6 +593,14 @@ MARKER_ALIASES = {
     "CODE_LGTM": "PASS",
     "CODE_OK": "PASS",
     "CODE_APPROVE": "PASS",
+    # PLAN_REVIEW (jajang 2026-04-29 — plan-reviewer 가 bare LGTM emit 사고)
+    "PLAN_REVIEW_LGTM": "PLAN_REVIEW_PASS",
+    "PLAN_REVIEW_OK": "PLAN_REVIEW_PASS",
+    "PLAN_REVIEW_APPROVE": "PLAN_REVIEW_PASS",
+    "PLAN_REVIEW_APPROVED": "PLAN_REVIEW_PASS",
+    "PLAN_REVIEW_REJECT": "PLAN_REVIEW_CHANGES_REQUESTED",
+    "PLAN_REVIEW_REJECTED": "PLAN_REVIEW_CHANGES_REQUESTED",
+    "PLAN_REVIEW_FAIL": "PLAN_REVIEW_CHANGES_REQUESTED",
     # 일반 (알리아스 컬렉션 — 호출자 expected set 안 일 때만 매핑)
     "APPROVE": "PASS",
     "APPROVED": "PASS",
@@ -600,7 +608,9 @@ MARKER_ALIASES = {
     "REJECT": "FAIL",
     "REJECTED": "FAIL",
     "NOT_APPROVED": "FAIL",
-    # 주의: LGTM 단독은 alias 안 함 — pr-reviewer 의 정식 마커이기도 해서 충돌
+    # 주의: LGTM 단독은 alias 안 함 — pr-reviewer 의 정식 마커이기도 해서 충돌.
+    # plan-reviewer 가 bare LGTM emit 시 agent.md 강화로 1차 방어, 정식
+    # PLAN_REVIEW_LGTM 변형으로 emit 시 위 alias 가 2차 방어.
 }
 
 
