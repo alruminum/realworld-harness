@@ -1365,7 +1365,38 @@ class WorktreeManager:
         else:
             default = _default_branch()
             _git("worktree", "add", "-b", branch_name, str(wt_path), default, check=True)
+        self._copy_untracked_plan_files(wt_path)
         return wt_path
+
+    # plan 파일 패턴 — architect 가 작성하지만 commit 전 worktree 진입하는 흐름
+    # (qa→architect LIGHT_PLAN→executor 체이닝). git worktree add 는 tracked HEAD
+    # 만 가져오므로 미커밋 plan 파일이 누락 → engineer attempt 0 no_changes.
+    # 안전 패턴: plan 디렉토리만. src/ 등은 worktree 경계 보호 위해 제외.
+    _PLAN_PREFIXES = ("docs/bugfix/", "docs/impl/", "docs/milestones/")
+
+    def _copy_untracked_plan_files(self, wt_path: Path) -> None:
+        """worktree 생성 직후 main repo 의 untracked plan 파일을 worktree 로 복사."""
+        import shutil
+        r = _git("ls-files", "--others", "--exclude-standard")
+        if r.returncode != 0:
+            return
+        copied = 0
+        for line in r.stdout.splitlines():
+            rel = line.strip()
+            if not rel or not rel.startswith(self._PLAN_PREFIXES):
+                continue
+            src = self.project_root / rel
+            if not src.is_file():
+                continue
+            dst = wt_path / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                shutil.copy2(src, dst)
+                copied += 1
+            except OSError:
+                pass
+        if copied:
+            print(f"[HARNESS] worktree 진입: untracked plan 파일 {copied}개 복사 ({wt_path.name})")
 
     def remove(self, issue_num: str) -> None:
         """worktree 정리."""
