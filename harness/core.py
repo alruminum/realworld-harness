@@ -1815,13 +1815,15 @@ def extract_src_refs(filepath: str | Path) -> List[str]:
         content = Path(filepath).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
-    matches = re.findall(r"src/[^ `\"']+\.(?:ts|tsx|js|jsx)", content)
+    from .path_resolver import engineer_scope_extract_regex
+    matches = engineer_scope_extract_regex().findall(content)
     return sorted(set(matches))[:5]
 
 
 def extract_files_from_error(error_text: str) -> List[str]:
     """error trace에서 src/ 경로 역추적."""
-    matches = re.findall(r"src/[^ :()]+\.(?:ts|tsx|js|jsx)", error_text)
+    from .path_resolver import engineer_scope_extract_regex
+    matches = engineer_scope_extract_regex().findall(error_text)
     return sorted(set(matches))[:5]
 
 
@@ -1903,20 +1905,20 @@ def build_loop_context(loop_type: str) -> str:
         ctx += "\n=== .env 존재 ===\n(.env 파일 있음 — 내용 생략)"
 
     if loop_type == "design":
-        comp_dir = Path("src/components")
-        if comp_dir.is_dir():
-            try:
-                components = sorted(
-                    str(p) for p in comp_dir.rglob("*.tsx")
-                )[:20]
-                components += sorted(
-                    str(p) for p in comp_dir.rglob("*.ts")
-                )[:20]
-                components = sorted(set(components))[:20]
-                if components:
-                    ctx += "\n=== src/components/ 트리 ===\n" + "\n".join(components)
-            except OSError:
-                pass
+        from .path_resolver import ui_components_paths
+        comps_all: list = []
+        for comp_dir_s in ui_components_paths():
+            comp_dir = Path(comp_dir_s)
+            if comp_dir.is_dir():
+                try:
+                    comps_all.extend(str(p) for p in comp_dir.rglob("*.tsx"))
+                    comps_all.extend(str(p) for p in comp_dir.rglob("*.ts"))
+                except OSError:
+                    pass
+        components = sorted(set(comps_all))[:20]
+        if components:
+            label = ", ".join(ui_components_paths())
+            ctx += f"\n=== {label} 트리 ===\n" + "\n".join(components)
         if Path("tailwind.config.ts").exists() or Path("tailwind.config.js").exists():
             ctx += "\n=== tailwind config 존재 ===\n(tailwind.config.ts/js 있음)"
 

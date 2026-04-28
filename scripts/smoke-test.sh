@@ -497,6 +497,63 @@ print('OK: V2 off → silent pass (stderr 없음) — 회귀 0')
 "
 
 echo ""
+echo "[15] path_resolver — V2 활성/비활성 회귀 (Issue #24)"
+run "path_resolver V2 비활성 → v1 fallback (단일 레포)" python3 -c "
+import sys, os
+sys.path.insert(0, '.')
+# 모든 V2 flag 제거
+for k in list(os.environ.keys()):
+    if k.startswith('HARNESS_GUARD_V2_'):
+        del os.environ[k]
+from harness import path_resolver as pr
+pr._cache_clear()
+assert pr.engineer_scope_pathspecs() == ['src/'], f'pathspecs v1 fallback 실패: {pr.engineer_scope_pathspecs()}'
+assert pr.engineer_scope_human_dir_list() == 'src/', f'human_dir_list v1 fallback 실패'
+pat_extract = pr.engineer_scope_extract_regex()
+assert pat_extract.pattern == pr._V1_ENGINEER_SCOPE_EXTRACT_REGEX, 'extract_regex v1 pattern 불일치'
+pat_test = pr.test_paths_extract_regex()
+assert pat_test.pattern == pr._V1_TEST_PATHS_REGEX, 'test_paths_regex v1 pattern 불일치'
+assert pr.ui_components_paths() == ['src/components'], f'ui_components v1 fallback 실패'
+print('OK: 모든 헬퍼 v1 fallback 확인')
+"
+
+run "path_resolver V2 활성 + jajang fixture → monorepo pathspec" python3 -c "
+import sys, os
+sys.path.insert(0, '.')
+os.environ['HARNESS_GUARD_V2_PATHS_EXECUTOR'] = '1'
+from harness import path_resolver as pr
+from pathlib import Path
+pr._cache_clear()
+
+# jajang fixture config 로드 (cwd 유지, project_root 명시)
+from harness.config import load_config
+fixture = Path('tests/pytest/fixtures/jajang_monorepo')
+cfg = load_config(project_root=fixture)
+assert 'apps' in ' '.join(cfg.engineer_scope), 'jajang fixture engineer_scope 로드 실패'
+
+# _engineer_scope_dirs() 가 monorepo 패턴을 처리하는지 확인
+# (실제 디렉토리는 없으므로 pathspecs 는 v1+apps/* 형태여야 함)
+pathspecs = pr.engineer_scope_pathspecs()
+# v2 활성 시 src/ 와 apps/*/src/ 형태가 있어야 함 (fixture config 기반)
+has_apps = any('apps' in p for p in pathspecs)
+has_src = 'src/' in pathspecs
+assert has_src or has_apps, f'pathspecs 형태 이상: {pathspecs}'
+print(f'OK: V2 활성 pathspecs={pathspecs}')
+"
+
+run "HARNESS_GUARD_V2_PATHS_TEST_REGEX_OFF=1 비상탈출 확인" python3 -c "
+import sys, os
+sys.path.insert(0, '.')
+os.environ['HARNESS_GUARD_V2_PATHS_EXECUTOR'] = '1'
+os.environ['HARNESS_GUARD_V2_PATHS_TEST_REGEX_OFF'] = '1'
+from harness import path_resolver as pr
+pr._cache_clear()
+pat = pr.test_paths_extract_regex()
+assert pat.pattern == pr._V1_TEST_PATHS_REGEX, f'비상탈출 실패: {pat.pattern}'
+print(f'OK: 비상탈출 flag ON → v1 regex 강제')
+"
+
+echo ""
 echo "==================================="
 echo "결과: PASS=$PASS / FAIL=$FAIL"
 if [ $FAIL -eq 0 ]; then

@@ -57,6 +57,13 @@ class HarnessConfig:
     # 빈 리스트(default) → agent-boundary._STATIC_ENGINEER_SCOPE 폴백 (회귀 0).
     # Phase 2 W2 — monorepo 동적화 (HARNESS-CHG Issue #13).
     engineer_scope: list = field(default_factory=list)
+    # ── #24 신규 ───────────────────────────────────────────────────────────────
+    # UI 컴포넌트 디렉토리 (design loop 컨텍스트 빌더 진입점).
+    # 빈 리스트 → 정적 fallback ["src/components"].
+    ui_components_paths: list = field(default_factory=list)
+    # 테스트 파일 추출 패턴 (test-engineer 산출 검증용 regex 문자열 목록).
+    # 빈 리스트 → 정적 fallback [r"src/[^ ]+\.(?:test|spec)\.[jt]sx?"].
+    test_paths: list = field(default_factory=list)
 
 
 def get_agent_model(agent_name: str, config: HarnessConfig) -> str:
@@ -119,6 +126,8 @@ def load_config(project_root: Path | None = None) -> HarnessConfig:
         agent_tiers=merged_tiers,
         agent_tier_assignment=merged_assignment,
         engineer_scope=data.get("engineer_scope", []) if isinstance(data.get("engineer_scope", []), list) else [],
+        ui_components_paths=data.get("ui_components_paths", []) if isinstance(data.get("ui_components_paths", []), list) else [],
+        test_paths=data.get("test_paths", []) if isinstance(data.get("test_paths", []), list) else [],
     )
 
 

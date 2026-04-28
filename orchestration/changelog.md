@@ -65,6 +65,35 @@
 | `HARNESS-CHG-20260428-14.4` | 2026-04-28 | docs  | pr-reviewer.md 에 에이전트 스코프 매트릭스 섹션 추가 — `hooks/agent-boundary.py` `ALLOW_MATRIX` 명시 + 스코프 밖 파일(docs/bugfix/**, docs/impl/**, package.json 등) 발견 시 NICE TO HAVE 강등 + 라우팅 권고 명시. MUST FIX 는 engineer/test-engineer 스코프 안 파일에만 발행. pr-reviewer 가 boundary 모르고 모든 영역에 MUST FIX 발행 → engineer boundary 차단 → no_changes 사이클 차단. | — |
 | `HARNESS-CHG-20260428-14.5` | 2026-04-28 | infra | impl_loop.py automated_checks 분기에 `no_changes` 별도 fail_type 추가 — `check_err.startswith("no_changes:")` 시 즉시 `IMPLEMENTATION_ESCALATE` (run_simple/_run_std_deep 양쪽). 옛 동작: 모든 autocheck 실패가 `autocheck_fail` 로 단일 분류 → circuit breaker 가 2회 누적 후에야 fire → boundary block 시 attempt 2회 무위 ($1.5+) 소진. 새 동작: no_changes 1회만에 escalate (boundary block / missing impl / 컨텍스트 손실 등 retry 무의미한 카테고리). | — |
 | `HARNESS-CHG-20260428-19` | 2026-04-28 | infra | [19.1] `current_session_id()` 글로벌 폴백 + 4중 가드 — RWHarness dogfooding 환경(화이트리스트 미등록 → 프로젝트 pointer 미생성)에서 live.json.agent silent skip 버그 차단. `~/.claude/harness-state/.session-id` 폴백 + 파일존재/sid형식/자기참조/6h신선도 가드. 회귀 0 (env > project > global 우선순위 보존, 폴백 실패 시 빈 문자열). 단위 테스트 9TC 신규. py_compile OK / pytest 9/9 / 회귀 101/101 / smoke 70/70 / dogfooding 실측 c86ce041-... 반환 확인. | — |
+| `HARNESS-CHG-20260428-24` | 2026-04-28 | infra | [24.1] src/ 하드코딩 잔존 8 사이트 일괄 fix — `harness/path_resolver.py` 신규 (7 헬퍼 SSOT) + `harness/config.py` ui_components_paths/test_paths 필드 추가 + 5 executor 파일 패치 (S1-S7,S9). `HARNESS_GUARD_V2_PATHS_EXECUTOR=1` staged flag (default off, v1 fallback 보장). `HARNESS_GUARD_V2_PATHS_TEST_REGEX_OFF=1` 비상탈출. 회귀 0: py_compile ALL OK / pytest 14/14 신규 + 110/110 회귀 / smoke 74/74 PASS. | — |
+
+---
+
+## `HARNESS-CHG-20260428-24` — 2026-04-28 — src/ 하드코딩 8 사이트 일괄 fix (executor 내부 dynamic SSOT 전환)
+
+**Type**: infra
+
+**Files**:
+- `harness/path_resolver.py` — 신규. 7 헬퍼 함수 (engineer_scope_pathspecs / extract_regex / grep_paths / any_exists / human_dir_list / ui_components_paths / test_paths_extract_regex). V2 flag 기반 staged rollout + v1 fallback 보장.
+- `harness/config.py` — `ui_components_paths: list`, `test_paths: list` 필드 추가 + load_config 매핑
+- `harness/helpers.py` — S1 (line 295): git diff pathspec → `engineer_scope_pathspecs()`
+- `harness/core.py` — S2 (line 1818): impl 추출 regex, S3 (line 1824): error trace 추출 regex → `engineer_scope_extract_regex()`. S4 (line 1906): design loop UI 컴포넌트 → `ui_components_paths()`
+- `harness/impl_router.py` — S5 (line 320): LIGHT_PLAN grep → `engineer_scope_grep_paths()`
+- `harness/impl_loop.py` — S6 (line 993): test-engineer 산출 추출 → `test_paths_extract_regex()`
+- `harness/plan_loop.py` — S7 (line 286): UX_SYNC 분기 → `engineer_scope_any_exists()`. S9 (line 298): ux-architect src_dir → `engineer_scope_human_dir_list()`
+- `tests/pytest/test_path_resolver.py` — 신규 14 TC (impl §7.1–§7.7 8 케이스 + v1/v2 양면 분리)
+- `scripts/smoke-test.sh` — [15] path_resolver V2 활성/비활성 회귀 3 step 추가
+- `orchestration/changelog.md` — 본 항목
+
+**미변경 (spec 준수)**: S8 (plan_loop.py 로그 텍스트), S10 (helpers.py 주석), S11 (core.py LLM 프롬프트), S12 (core.py 주석)
+
+**Staged rollout**:
+- `HARNESS_GUARD_V2_PATHS_EXECUTOR=1` → 8 사이트 전체 V2 활성
+- `HARNESS_GUARD_V2_ALL=1` → 위 포함 전체 V2 활성 (메타 flag)
+- `HARNESS_GUARD_V2_PATHS_TEST_REGEX_OFF=1` → S6 비상탈출 (v1 강제)
+- default: unset → v1 fallback 100% 보장
+
+**검증**: py_compile ALL OK / pytest 14/14 신규 + 110/110 회귀 / smoke 74/74 PASS
 
 ---
 
