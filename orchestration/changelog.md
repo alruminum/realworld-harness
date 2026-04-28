@@ -68,6 +68,7 @@
 | `HARNESS-CHG-20260428-24` | 2026-04-28 | infra | [24.1] src/ 하드코딩 잔존 8 사이트 일괄 fix — `harness/path_resolver.py` 신규 (7 헬퍼 SSOT) + `harness/config.py` ui_components_paths/test_paths 필드 추가 + 5 executor 파일 패치 (S1-S7,S9). `HARNESS_GUARD_V2_PATHS_EXECUTOR=1` staged flag (default off, v1 fallback 보장). `HARNESS_GUARD_V2_PATHS_TEST_REGEX_OFF=1` 비상탈출. 회귀 0: py_compile ALL OK / pytest 14/14 신규 + 110/110 회귀 / smoke 74/74 PASS. | — |
 | `HARNESS-CHG-20260428-26` | 2026-04-28 | infra | [26.1] worktree 재사용 시 untracked plan 파일 자동 복사 — `create_or_reuse` reuse 분기(`wt_path.exists()` 즉시 return)가 `_copy_untracked_plan_files` 를 건너뛰던 hole 수정. `reused` 플래그 도입, 재사용 worktree 에 이미 존재하는 파일은 덮어쓰기 금지(dst.exists 가드). `tests/pytest/test_worktree.py` 신규 3TC (REQ-001 reuse 복사 / REQ-002 기존 보존 / REQ-003 fresh 회귀 0). pytest 3/3 + 전체 171/171 PASS. Closes #26. | — |
 | `HARNESS-CHG-20260428-26` | 2026-04-28 | infra | [26.2] PR review 반영 — `_copy_untracked_plan_files` 내 `import shutil` 중복 제거 (최상단 이미 존재) + `_git("ls-files", ...)` 에 `cwd=str(self.project_root)` 명시 (worktree cwd 에서 호출 시 main repo 스캔 보장). REQ-005 cwd 독립성 회귀 테스트 추가. pytest 5/5 + 전체 173/173 PASS. | — |
+| `HARNESS-CHG-20260428-26` | 2026-04-28 | infra | [26.3] LIGHT_PLAN 산출물 동봉 — `docs/impl/26-worktree-reuse-plan-copy.md` 추가 ([24.1] [19.1] 등 기존 패턴과 일관). | — |
 
 ---
 
