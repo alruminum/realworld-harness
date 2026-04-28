@@ -64,7 +64,10 @@ def main():
     if not agent:
         sys.exit(0)
 
-    # 1. 프롬프트 검증: 이슈 번호 필수 에이전트
+    # 1. 프롬프트 검증: 추적 ID 필수 에이전트
+    #    추적 ID = `#N` (GitHub) 또는 `LOCAL-N` (LocalBackend, harness/tracker.py).
+    #    백엔드는 `harness/tracker.py` 가 환경에 따라 자동 선택 — gh CLI 미설치 환경
+    #    에서도 LocalBackend 폴백으로 추적성 보존 (HARNESS-CHG-20260428-01).
     #    예외: SYSTEM_DESIGN — 전체 구조 설계, 특정 이슈 귀속 아님
     #    예외: TASK_DECOMPOSE — 이슈를 생성하는 역할
     #    예외: TECH_EPIC — 기술 에픽 초안, 이슈 선행 생성 아님
@@ -75,8 +78,11 @@ def main():
             r"SYSTEM_DESIGN|TASK_DECOMPOSE|TECH_EPIC|LIGHT_PLAN|DOCS_SYNC",
             prompt, re.IGNORECASE
         )
-        if not is_exempt and not re.search(r"#\d+", prompt):
-            deny(f"❌ {agent} 호출 전 GitHub 이슈 등록 필요. 프롬프트에 이슈 번호(#NNN)가 없습니다.")
+        if not is_exempt and not re.search(r"#\d+|LOCAL-\d+", prompt):
+            deny(f"❌ {agent} 호출 전 추적 ID 등록 필요. "
+                 f"프롬프트에 추적 ID(#NNN 또는 LOCAL-NNN)가 없습니다. "
+                 f"발급: `python3 -m harness.tracker create-issue --title \"...\"` "
+                 f"(백엔드는 환경에 따라 github/local 자동 선택)")
 
     # 2. 프롬프트 검증: architect 호출 시 Mode 명시 권장 (강제 아님)
     #    에이전트 본문의 "모드 미지정 시 입력 내용으로 판단" 규칙에 위임.

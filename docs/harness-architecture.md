@@ -223,7 +223,88 @@ cwd가 화이트리스트 경로 또는 그 서브디렉토리 → True
 
 ---
 
-## 6. 변경 이력 추적
+## 6. 추적 백엔드 (tracker)
+
+`harness-spec.md §3 I-2` 가 강제하는 *추적 ID* 의 발급 채널을 추상화한 레이어. `harness/tracker.py` 에 정의된다.
+
+### 6.1 백엔드 종류
+
+| 백엔드 | 저장 매체 | ID 형식 | 가용 조건 |
+|---|---|---|---|
+| `github` | GitHub Issues (gh CLI 경유) | `#N` | `gh` 설치 + `gh repo view` 성공 (repo 연결됨) |
+| `local` | `orchestration/issues/INDEX.jsonl` (append-only) + `.next_id` | `LOCAL-N` | 항상 가용 (마지막 폴백) |
+
+### 6.2 선택 우선순위
+
+```
+HARNESS_TRACKER env (강제, 미가용이면 RuntimeError)
+    └─ prefer 인자 (호출자 지정)
+        └─ github (자동)
+            └─ local (마지막 폴백, 항상 가용)
+```
+
+- 환경에 `gh` 가 없어도 `local` 로 폴백 → 추적성 보존, 환경 의존 차단.
+- `HARNESS_TRACKER=local` 강제 시 GitHub repo 가 있어도 로컬에 기록 (테스트·격리 환경용).
+
+### 6.3 호출 경로
+
+| 호출자 | 경로 | 비고 |
+|---|---|---|
+| `agents/qa.md` | `mcp__github__create_issue` 우선 → 실패 시 `Bash + python3 -m harness.tracker create-issue` 폴백 | qa frontmatter 의 `tools:` 에 Bash 포함 (tracker CLI 한정 사용) |
+| `agents/designer.md` Phase 0-0 | `python3 -m harness.tracker create-issue` 직접 | `designer_active` 플래그 set 동안만 `commit-gate.py` Gate 1 통과 |
+| `harness/executor.py impl --issue <REF>` | 호출자 (qa/designer/외부) 가 발급한 `<REF>` 를 그대로 사용 | `<REF>` 형식 검증은 agent-gate.py |
+| `hooks/agent-gate.py:78` | `r"#\d+|LOCAL-\d+"` 정규식 — architect/engineer 호출 프롬프트 내 추적 ID 존재 강제 | gh 미설치 환경도 LOCAL-N 으로 통과 가능 |
+
+### 6.4 `commit-gate.py` Gate 1 가드
+
+메인 Claude 가 추적 이슈 생성/수정을 직접 호출하는 것을 차단:
+
+```python
+# 차단 대상 (cmd 정규식)
+gh\s+issue\s+(create|edit)
+gh\s+api\s+.*issues.*--method\s+POST
+gh\s+api\s+.*issues.*-X\s+(POST|PATCH)
+gh\s+api\s+.*issues/\d+.*-X\s+PATCH
+harness\.tracker\s+(create-issue|comment)        # ← 추가됨
+harness/tracker\.py\s+(create-issue|comment)     # ← 추가됨
+```
+
+`ISSUE_CREATORS` (qa, designer, architect, product-planner) 중 하나가 활성일 때만 통과. 조회 명령(`which`, `get`)은 가드 대상 아님.
+
+### 6.5 LocalBackend 저장 형식
+
+`orchestration/issues/INDEX.jsonl` — 1줄 1엔트리 JSON, append-only:
+
+```json
+{
+  "id": 1,
+  "ref": "LOCAL-1",
+  "title": "...",
+  "body": "...",
+  "labels": ["infra", "invariant-shift"],
+  "milestone": null,
+  "state": "open",
+  "created": "2026-04-28T09:59:59",
+  "updated": "2026-04-28T09:59:59",
+  "comments": [...]
+}
+```
+
+`.next_id` — ID 시퀀스 카운터(정수). 단일 호출 가정으로 파일 락 없음.
+
+### 6.6 검증
+
+`tests/pytest/test_tracker.py` — stdlib unittest 16 케이스:
+- LocalBackend: 시퀀셜 ID, persistence, get/comment/missing, INDEX.jsonl 형식
+- ParseRef: github/local/legacy/invalid
+- get_tracker: env 강제, 폴백 순서
+- GitHubBackend: gh CLI 가용성 디텍션 (subprocess 모킹)
+
+실행: `python3 -m unittest tests.pytest.test_tracker` (pytest 미의존).
+
+---
+
+## 7. 변경 이력 추적
 
 모든 하네스 인프라 변경은 `HARNESS-CHG-YYYYMMDD-NN` 식별자를 가진다.
 

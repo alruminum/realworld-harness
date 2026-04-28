@@ -325,4 +325,64 @@ v0.1.0-alpha release (Phase 4 종료) + 마이그레이션 완료 후, 사용자
 
 ---
 
+## `HARNESS-CHG-20260428-01` — 2026-04-28
+
+### Rationale
+
+유저 진단 (2026-04-28): RWHarness 가 다른 OSS 스택(Husky / lint-staged / GitHub Actions marketplace) 대비 *너무 strict* 하다. 한 점이 빠지면 전체가 깨지는 강한 결합 체인이 다수 존재하며, 특히 다음 체인이 첫 번째로 보고됐다:
+
+```
+gh CLI 미설치  →  GitHub Issue 번호(#N) 발급 불가
+              →  agent-gate.py 가 architect/engineer 차단 (r"#\d+" 미매칭 시 deny)
+              →  qa 가 이슈 만들 수 없음
+              →  designer 가 직접 gh CLI 호출 (Phase 0-0)
+              →  전체 워크플로우 정지
+```
+
+진단 결과 두 종류의 강제가 한 코드 위에 섞여 있었다:
+
+- **프로세스 강제 (정당)**: 모든 변경을 추적 ID 로 묶어 추적성 보존 (`I-2`)
+- **환경 의존 (의도하지 않은 결합)**: 그 추적 ID 발급을 *gh CLI 라는 단일 도구*로만 실현
+
+→ 두 강제를 분리해, 환경 의존(`gh`) 이 빠져도 프로세스 강제(추적성)가 깨지지 않도록 한다. `harness-spec.md §0` Core Invariant 자체는 변경 없음 — §3 의 *구현 표현*만 일반화 (`#N` → 추적 ID 일반형).
+
+### Alternatives
+
+| # | 옵션 | 평가 |
+|---|---|---|
+| 1 | agent-gate 완화 — `#N` 매칭 실패 시 hard-deny 대신 warn + 자동 발급(`AUTO-N`) | 거부 — 추적 ID *형태*는 지키나 *의미*가 약해짐. 유저가 인지 없이 발급되면 추적성 신뢰도 ↓. 자동 발급 로직이 어디서 살지 (메인 / 훅 / 에이전트) 가 또 결합 |
+| 2 | designer.md `gh issue create` 만 `mcp__github__create_issue` 우선 폴백으로 뒤집기 — 기타 동일 | 거부 — 가장 작은 변경이지만 GitHub repo 미연결 케이스 미해결. MCP 도 GitHub 종속 |
+| **3** | **추적성 추상화** — `harness/tracker.py` 인터페이스 + 백엔드(github / local) | **선택** — 추적성은 보존, 도구 의존만 분리. 향후 Linear/Jira 등 백엔드 추가도 같은 자리 |
+| 4 | 본 시스템에서 추적 ID 자체를 optional 로 | 거부 — `harness-spec.md §0 Core Invariant` 와 `I-2` 의 추적성 핵심을 약화 |
+
+### Decision
+
+옵션 3 채택. 결합 체인 끊는 위치를 *추적 ID 발급 인터페이스* 로 잡고, 호출자(agent-gate / qa / designer / executor)는 모두 `IssueRef` 추상에만 의존하도록 한다.
+
+| 결정 항목 | 값 | 근거 |
+|---|---|---|
+| ID 표현 | `#N` (GitHub) / `LOCAL-N` (로컬) — 두 형식 모두 수용 | 기존 `#N` 호환 + 백엔드별 출처 식별 가능 |
+| Local 저장소 | `orchestration/issues/INDEX.jsonl` (append-only) + `.next_id` | jsonl = grep/diff 친화 + stdlib only. `orchestration/` 하위는 프로젝트 거버넌스 자산이라 위치 일관 |
+| 백엔드 우선순위 | env(`HARNESS_TRACKER`) > prefer 인자 > github > local | local 은 항상 가용 → 마지막 폴백 (안전) |
+| 부트스트랩 | 본 Task-ID 자체를 `LOCAL-1` 로 등록 (자기-호스팅) | gh 의존성을 첫 사용부터 끊어 검증 |
+| 불변식 표기 | PR title 에 `[invariant-shift]` 토큰 포함 | §3 I-2 의 표현 변경 (약화 아니라 일반화). `harness-spec.md §0` 의 PR token 룰을 따름 |
+| 테스트 | stdlib unittest, pytest 미의존 | 외부 의존 추가 없이 16/16 통과 |
+
+### Follow-Up
+
+- `[1.1]` ✅ harness/tracker.py + 단위 테스트 16/16 (commit `4c4d4f0`)
+- `[1.2]` 본 commit — LOCAL-1 부트스트랩 + impl plan + rationale 4섹션
+- `[1.3]` agent-gate.py 정규식 확장 (`#N` → `#N|LOCAL-N`)
+- `[1.4]` agents/designer.md Phase 0-0 — gh CLI → tracker CLI
+- `[1.5]` agents/qa.md 폴백 안내 (MCP 미가용 → tracker LocalBackend)
+- `[1.6]` docs/harness-spec.md §3 I-2 표현 일반화 + harness-architecture.md tracker 섹션
+- `[1.7]` Phase 종료 commit + PR 생성 (`[invariant-shift]` 토큰)
+
+후속 별도 Task-ID 권장:
+- `harness/executor.py` 의 `--issue` 인자 처리 — 정수 강제일 가능성. `IssueRef` 통과
+- `HARNESS_ISSUE_NUM` env 가 worktree 격리 디렉토리명에 사용됨 — `LOCAL-N` 도 안전한지 확인
+- harness-router.py:68-69 의 `#NNN` 마커 분류 — 동일 패턴 동기화 ([1.3] 에서 묶을 수도)
+
+---
+
 > 새 항목은 위 형식으로 추가. Task-ID 헤더는 H2(`##`), 4섹션은 H3(`###`).

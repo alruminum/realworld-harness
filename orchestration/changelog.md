@@ -35,6 +35,12 @@
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | infra | Phase 4 [4.13] migrate-step1.sh + migrate-step2.sh 자동화 스크립트 — 사용자 확인·안전 검사·롤백 안내 내장 | — |
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | infra | Phase 4 [4.14] marketplace.json/plugin.json 스키마 정정 — Claude Code parser 기준 (top-level name + owner object + repository string) | — |
 | `HARNESS-CHG-20260427-06` | 2026-04-27 | infra | v0.2.0 [6.1] setup-rwh.sh 플러그인 모드 분기 — CLAUDE_PLUGIN_ROOT set 시 글로벌 settings.json 훅 등록 skip (Phase 4 잔존 부채 #1 해결) | — |
+| `HARNESS-CHG-20260428-01` | 2026-04-28 | infra | [1.1] harness/tracker.py — 추적 ID 백엔드 추상화 (GitHub gh CLI / Local jsonl) + 단위 테스트 16/16 | — |
+| `HARNESS-CHG-20260428-01` | 2026-04-28 | spec  | [1.2] LOCAL-1 부트스트랩 + docs/impl/LOCAL-1-tracker-abstraction.md + rationale 4섹션 | — |
+| `HARNESS-CHG-20260428-01` | 2026-04-28 | infra | [1.3] hooks/agent-gate.py + harness-router.py 추적 ID 정규식 확장 (#N → #N\|LOCAL-N) | — |
+| `HARNESS-CHG-20260428-01` | 2026-04-28 | agent | [1.4] agents/designer.md Phase 0-0 — gh issue create → tracker CLI + commit-gate.py Gate 1 가드 확장 | — |
+| `HARNESS-CHG-20260428-01` | 2026-04-28 | agent | [1.5] agents/qa.md MCP 미가용 폴백 — Bash 추가 (tracker CLI 한정) + 폴백 흐름 안내 | — |
+| `HARNESS-CHG-20260428-01` | 2026-04-28 | spec  | [1.6] docs/harness-spec.md §3 I-2 추적 ID 일반형 표현 + harness-architecture.md §6 추적 백엔드 신규 섹션 | `Document-Exception: rationale.md 4섹션은 본 Task-ID 의 [1.2] commit 0c9d5f3 에서 일괄 작성됨 — 본 [1.6] 은 그 결정의 spec 적용` |
 
 ---
 
@@ -201,6 +207,34 @@
 **Linked**:
 - `docs/proposals.md §4` Phase 4
 - 유저 명시 승인 (2026-04-27): "응 진행"
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-01` — 2026-04-28 — 추적 ID 백엔드 추상화 (gh CLI 강제 결합 해소)
+
+**Type**: spec (인프라 + spec 갱신 포함, 우선순위 spec)
+
+**Issue**: `LOCAL-1` (`orchestration/issues/INDEX.jsonl#1`) — 본 Task-ID 자체가 LocalBackend 의 첫 사용 사례 (자기-호스팅 부트스트랩)
+
+**Branch**: `harness/tracker-abstraction`
+
+**Invariant flag**: `[invariant-shift]` (PR title 에 명시 예정 — `§3 I-2` 의 표현 일반화. 약화 아님)
+
+**Sub-commits**:
+- `[1.1]` `4c4d4f0` `harness/tracker.py` 신규 (+273) + `tests/pytest/test_tracker.py` 신규 (+145) + 단위 테스트 16/16
+- `[1.2]` (본 commit) `orchestration/issues/INDEX.jsonl` LOCAL-1 부트스트랩 + `docs/impl/LOCAL-1-tracker-abstraction.md` (+108) + `rationale.md` 4섹션 추가
+- `[1.3]` `hooks/agent-gate.py:78` + `hooks/harness-router.py:68` 추적 ID 정규식 `#\d+` → `#\d+|LOCAL-\d+`. deny 메시지에 `python3 -m harness.tracker create-issue` 발급 안내 추가
+- `[1.4]` `agents/designer.md` Phase 0-0 — `gh issue create` → `python3 -m harness.tracker create-issue` (백엔드 자동 선택). `commit-gate.py` Gate 1 가드 확장: `harness\.tracker\s+(create-issue|comment)` + `harness/tracker\.py\s+(create-issue|comment)` 정규식 추가 — 메인 Claude 우회 차단 보존
+- `[1.5]` `agents/qa.md` — `tools:` 라인에 `Bash` 추가 (tracker CLI 폴백 한정 사용). MCP 미가용 폴백 흐름 명시 (mcp__github__create_issue → Bash + tracker CLI → EXTERNAL_TRACKER_NEEDED 마커). 이슈 생성 금지 조건에 `LOCAL-N` 형식 인식 추가
+- `[1.6]` `docs/harness-spec.md §3 I-2` 표현 갱신 — `--issue <N>` → `--issue <REF>` (REF = `#N | LOCAL-N`). `harness-architecture.md` 신규 §6 "추적 백엔드 (tracker)" 6.1~6.6 추가 (백엔드 종류 / 선택 우선순위 / 호출 경로 / commit-gate Gate 1 가드 / LocalBackend 저장 형식 / 검증). 기존 §6 "변경 이력 추적" → §7 으로 시프트
+- `[1.7]` Phase 종료 commit + PR 생성  *(예정)*
+
+**Linked**:
+- 진단 보고: 유저 세션 (2026-04-28) — RWHarness 가 OSS 스택(Husky / lint-staged / GH Actions) 대비 너무 strict 하다는 지적
+- `docs/harness-spec.md §0 Core Invariant` — 본 변경은 §0 자체는 보존, §3 의 *구현 표현*만 갱신
+- `orchestration/policies.md §2` — `[invariant-shift]` PR token 룰
 
 **Exception**: —
 

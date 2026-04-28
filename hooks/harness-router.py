@@ -65,7 +65,8 @@ def fast_classify(prompt):
         return "UI"
 
     # ── IMPLEMENTATION ──
-    if re.search(r'#\d+', p) and re.search(r'(구현|수정|추가|만들|해줘|해주세요|하자|진행)', p):
+    # 추적 ID = `#N` (GitHub) 또는 `LOCAL-N` (LocalBackend) — agent-gate.py 와 동일 패턴
+    if re.search(r'#\d+|LOCAL-\d+', p) and re.search(r'(구현|수정|추가|만들|해줘|해주세요|하자|진행)', p):
         return "IMPLEMENTATION"
     if re.search(r'(구현|추가|만들어|생성|작성).*해', p) and not re.search(r'^(왜|어떻게|뭐)', p):
         return "IMPLEMENTATION"

@@ -77,7 +77,10 @@
 - 출처: `orchestration-rules.md:29-35`, `CLAUDE.md:113-125`.
 
 ### I-2. 모든 구현은 하네스 루프를 거친다
-- 강제 지점: `harness/executor.py impl --impl <path> --issue <N>`.
+- 강제 지점: `harness/executor.py impl --impl <path> --issue <REF>`.
+- `<REF>` 는 추적 ID 일반형 — `#N` (GitHub Issue) 또는 `LOCAL-N` (LocalBackend, `orchestration/issues/INDEX.jsonl`).
+- 백엔드는 `harness/tracker.py` 가 환경에 따라 자동 선택 (`gh` CLI 가용성 + repo 연결 + `HARNESS_TRACKER` env). gh 미설치 환경에서도 `LOCAL-N` 폴백으로 추적성 보존.
+- 추적 ID 강제 자체는 보존 — agent-gate.py:78 이 `r"#\d+|LOCAL-\d+"` 정규식으로 검증.
 - depth=simple으로 경량화 가능하지만 우회는 없다.
 
 ### I-3. 유저 게이트에서 자동 진행 금지
