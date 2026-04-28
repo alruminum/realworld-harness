@@ -44,6 +44,7 @@
 | `HARNESS-CHG-20260428-02` | 2026-04-28 | infra | [2.1] tracker.py — IssueRef.internal property + format_ref() + normalize_issue_num() + 단위 테스트 33/33 | — |
 | `HARNESS-CHG-20260428-02` | 2026-04-28 | infra | [2.2] core.py 의 gh issue view → tracker.get_issue() 위임 + 7파일 f-string `#{issue_num}` → `{format_ref(issue_num)}` + executor 진입 normalize | — |
 | `HARNESS-CHG-20260428-02` | 2026-04-28 | infra | [2.3] smoke-test.sh §9 tracker LOCAL-N regression 회로 5건 추가 (parse_ref / format/normalize / LocalBackend 라운드트립 / 강제 폴백 / which CLI) — 56/56 PASS | — |
+| `HARNESS-CHG-20260428-03` | 2026-04-28 | infra | [3.1] BATS 잔존 표기 제거 — CHANGELOG 부채 라인 + PR 템플릿 + policies.md §2 `tests/bats/` 표기. 코드/스크립트에 BATS 흔적 0건 확인 (점검 결과) | — |
 
 ---
 
@@ -261,6 +262,38 @@
 - `HARNESS-CHG-20260428-01` (commit `c18003e`) — 추적 ID 추상화 (이번 정리의 모태)
 - 진단 보고: 유저 세션 (2026-04-28) — "잔존 홀이랑 부수발견 수리"
 - `[2.2]` 검증: py_compile 8/8 + unittest 33/33 + smoke-test 56/56
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-03` — 2026-04-28 — BATS 잔존 표기 제거 (Phase 4 부채 [6.2] 해소)
+
+**Type**: infra (`.github/` 포함)
+
+**Branch**: `harness/bats-cleanup`
+
+**Issue**: 별도 추적 ID 미발급 — Phase 4 잔존 부채 [6.2] 자체 해소
+
+**점검 결과** (사전 검증):
+- `.bats` 파일: 0건
+- `tests/bats/` 디렉토리: 미존재 (`tests/pytest/` 만 존재)
+- `bats` 명령어 참조 (executable scripts): 0건
+- BATS 언급: 문서 placeholder 만 남음 (CHANGELOG, PR 템플릿, policies.md §2)
+- 즉, **마이그레이션 작업 자체는 *이미 완료*** 됐고 문서가 갱신 안 된 상태였음
+
+**수정 (3 파일)**:
+- `CHANGELOG.md` 알려진 부채 — BATS 라인 strikethrough + 해소 사유 명시 (history 보존)
+- `.github/PULL_REQUEST_TEMPLATE.md` — Change-Type test 행에서 `tests/bats/` 제거
+- `orchestration/policies.md §2` 표 — 동일
+
+**비변경 (의도)**:
+- `scripts/check_doc_sync.py` `TEST_PATTERNS = [re.compile(r"^tests/")]` — prefix 매칭이라 미래 `tests/X/` 추가에도 동작. 손댈 필요 없음
+- `orchestration/{changelog,rationale}.md` historical entries — 과거 시점 상태 기록이므로 보존
+
+**Linked**:
+- `CHANGELOG.md` v0.2.0 알려진 부채 §[6.2]
+- `HARNESS-CHG-20260427-06` rationale.md Follow-Up 의 `[6.2]` 항목
 
 **Exception**: —
 

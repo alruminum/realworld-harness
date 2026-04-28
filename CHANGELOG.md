@@ -46,7 +46,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### 알려진 부채 (v0.2.0 이후 정리 대상)
 - `setup-rwh.sh` 의 글로벌 settings.json hooks 등록 영역에 플러그인 모드 분기 미적용 (잠재 중복 등록 가능성, 다만 "이미 등록됨" 스킵 로직으로 안전)
-- BATS → pytest 잔여 마이그레이션 (차단 요소 X)
+- ~~BATS → pytest 잔여 마이그레이션~~ (해소됨 — `HARNESS-CHG-20260428-03`. 코드/스크립트에 BATS 흔적 0건 확인, 문서 placeholder 만 남아있던 것을 정리)
 - Node.js 20 deprecation (액션 자체 Node 24 호환되면 env 제거)
 
 ### Phase

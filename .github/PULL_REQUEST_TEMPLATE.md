@@ -18,7 +18,7 @@ PR 작성자: 본 템플릿을 그대로 두고 ✅ 체크 또는 빈 항목을 
 - [ ] **infra** — `hooks/`, `harness/`, `scripts/`, `.claude-plugin/`
 - [ ] **agent** — `agents/*.md`, `agents/**/*.md`
 - [ ] **docs** — `README.md`, `CHANGELOG.md`, `docs/`(spec 제외), `templates/`
-- [ ] **test** — `tests/pytest/`, `tests/bats/`
+- [ ] **test** — `tests/pytest/`
 
 ## Summary
 
