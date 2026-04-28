@@ -53,6 +53,7 @@
 | `HARNESS-CHG-20260428-07` | 2026-04-28 | infra | [7.1] migration audit — `~/.claude/scripts/`, `~/.claude/setup-harness.sh`, `~/.claude/agents/{agent}.md` 잔존 hardcode 5 파일 9 위치 일괄 env-aware 교체 (PR #4 systematic 후속) | `Document-Exception: harness-architecture.md 단일 행 path 정정 — 의사결정 변경 없는 문구 fix 라 rationale 4섹션 불필요. 본 Task-ID 본문 섹션이 동기·범위 명시` |
 | `HARNESS-CHG-20260428-08` | 2026-04-28 | agent | [8.1] validator sub-docs canonical 마커 — plan/code/design/bugfix-validation 출력 형식 `---MARKER:X---` 정형화 + preamble 마커명 정확도 절대 룰 추가 (PLAN_LGTM 변형 차단) | — |
 | `HARNESS-CHG-20260428-09` | 2026-04-28 | infra | [9.1] parse_marker alias map — LLM 변형(PLAN_LGTM/PLAN_OK/PLAN_APPROVE/APPROVE/REJECT 등) → canonical 흡수. 3차 폴백 + stderr 경고. agent docs 강화로 안 풀린 PLAN_OK/APPROVE 사례(jajang 2026-04-28) defense in depth | — |
+| `HARNESS-CHG-20260428-10` | 2026-04-28 | infra | [10.1] migration audit cleanup — notify.py:19 CLI 예시 + plugin-write-guard:83 + settings-watcher:42,54 메시지 + README §C 신규 사용자 혼동 차단 (4건 일괄, MCP graceful 별도 검토) | — |
 
 ---
 
@@ -590,6 +591,46 @@ RWHarness commands/harness-review.md:21 → ~/.claude/scripts/harness-review.py 
 **Linked**:
 - jajang 사례 (2026-04-28) `PLAN_OK / APPROVE` 변형 emit
 - `HARNESS-CHG-20260428-08` (PR #8) — agent docs canonical 룰. *주 방어선*. 본 PR 은 *defense in depth* 보완
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-10` — 2026-04-28 — migration audit cleanup (4건)
+
+**Type**: infra (코드 + README)
+
+**Branch**: `harness/audit-cleanup`
+
+**Issue**: 마이그레이션 systematic audit (`HARNESS-CHG-20260428-07` 후속) 잔존 4건 정리.
+
+**[10.1] 4건 일괄**:
+
+1. `harness/notify.py:19` (HIGH — 테스터 차단) — CLI 테스트 예시 `~/.claude/harness/notify.py` 가 마이그레이션으로 삭제된 경로
+   → `${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/harness/notify.py`
+
+2. `hooks/plugin-write-guard.py:83` (MID — 메시지 정확도) — 우회 안내가 `~/.claude/hooks/*.py` 로 되어 있으나 플러그인 모드에선 `${CLAUDE_PLUGIN_ROOT}/hooks/`
+   → "${CLAUDE_PLUGIN_ROOT}/hooks/*.py 또는 자체 플러그인의 hooks"
+
+3. `hooks/harness-settings-watcher.py:42,54` (MID — 메시지 정확도) — 글로벌 hooks 변경 시 안내 메시지가 *삭제된* `~/.claude/setup-harness.sh` 를 가리킴
+   → 라인 42: "플러그인의 `hooks/hooks.json` 또는 `scripts/setup-rwh.sh`에도 반영 필요"
+   → 라인 54: "플러그인의 `hooks/hooks.json` (자동 로드) 또는 전역 `~/.claude/settings.json` 에서만 관리"
+
+4. `README.md` §C (MID-HIGH — 신규 사용자 혼동) — 옵션 A/B/C 구조에서 §C 가 "기존 사용자 전용" 임이 모호 → 신규가 잘못 진입 가능
+   → §C 헤더에 "*기존* 사용자만" 추가 + 명시적 경고 박스 ("**신규 사용자는 §A 사용. §C 는 과거에 ~/.claude 에 직접 hooks/, harness/, agents/ 를 두고 사용하던 사용자 전용 경로**")
+
+**비변경 (의도)**:
+- audit 발견 5번 (MCP 도구 hard-fail) — qa.md / designer.md 는 PR #1 에서 Bash + tracker CLI 폴백 이미 추가됨. architect/ux-architect 는 design-only flow 로 한정. critical 아님 → 별도 검토
+- audit 발견 9번 (업스트림 후속 변경 갭) — Phase 4 마이그레이션 완료 단계의 기술 부채. 긴급 아님
+
+**검증**:
+- `python3 -m py_compile harness/notify.py hooks/plugin-write-guard.py hooks/harness-settings-watcher.py` — OK
+- `python3 -m unittest tests.pytest.test_tracker` — 44/44 OK
+- `bash scripts/smoke-test.sh` — 56/56 PASS
+
+**Linked**:
+- `HARNESS-CHG-20260428-07` (PR #7) — migration systematic audit. 본 PR 은 그 audit 의 잔존 4건 정리
+- audit 보고서 (subagent 결과, 2026-04-28)
 
 **Exception**: —
 

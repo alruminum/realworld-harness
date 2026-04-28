@@ -96,7 +96,9 @@ cd /path/to/your-project
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-rwh.sh"
 ```
 
-### C. ~/.claude 에 source 시스템이 있는 사용자 — 마이그레이션
+### C. ~/.claude 에 source 시스템이 있는 *기존* 사용자만 — 마이그레이션
+
+> **신규 사용자는 §A 사용. §C 는 *과거에 ~/.claude 에 직접 hooks/, harness/, agents/ 를 두고 사용하던* 사용자 전용 경로.**
 
 기존 ~/.claude 에 RWHarness 의 source(hooks/, harness/, agents/ 등)가 활성화돼있다면 **충돌 회피 정리 후 install** 필요. step-by-step: [`docs/migration-from-source.md`](docs/migration-from-source.md). 백업 → 플러그인 install → settings.json hooks 제거 → source 디렉토리 삭제 → 검증.
 
