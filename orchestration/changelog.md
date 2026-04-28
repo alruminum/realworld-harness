@@ -72,6 +72,9 @@
 | `HARNESS-CHG-20260428-26` | 2026-04-28 | infra | [26.3] LIGHT_PLAN 산출물 동봉 — `docs/impl/26-worktree-reuse-plan-copy.md` 추가 ([24.1] [19.1] 등 기존 패턴과 일관). | — |
 | `HARNESS-CHG-20260428-27` | 2026-04-28 | infra | [27.A1] light-plan template 분기 enumeration 섹션 강제 — `agents/architect/light-plan.md` 템플릿에 `## 분기 enumeration` 섹션 + LIGHT_PLAN_READY 자가 체크 5항목(+1행) 추가. `agents/validator/plan-validation.md` §A 체크리스트에 분기 enumeration 행 추가 + 출력 표 동기화. `tests/pytest/test_plan_template.py` 신규 6 TC (합성 픽스처 5 + self-apply 1). [14.2] hole (#26) 재발 차단 — reuse 분기 누락 → 단일행 enumeration → PLAN_VALIDATION_FAIL 게이트 강제. pytest 6/6 신규 + 188/188 전체 PASS. Closes #31. | — |
 | `HARNESS-CHG-20260428-27` | 2026-04-28 | infra | [27.A1.plan] LIGHT_PLAN 산출물 동봉 — `docs/impl/31-light-plan-branch-enumeration.md` 추가 ([24.1] [19.1] [26.3] 패턴과 일관). | — |
+| `HARNESS-CHG-20260428-27` | 2026-04-28 | infra | [27.A2] PR-time harness/** ↔ tests/** 동반 게이트 (Tests-Exception 패턴) — `scripts/check_test_sync.py` 신규 (check_doc_sync.py 골격 이식, TRIGGER_PATTERNS harness/+hooks/, Tests-Exception 마커). `.github/workflows/test-sync.yml` 신규 (doc-sync.yml 1:1 복사 + step 이름·경로 교체). `orchestration/policies.md` §8 신규 (test-sync 게이트 + Tests-Exception 스코핑 + 통합 지점) + 기존 §7 → §9 재번호. `tests/pytest/test_check_test_sync.py` 신규 8 TC (REQ-001~005 + 보조 3건 — 사유 짧음/빈 사유/과거 commit 재사용 hole 차단). pytest 8/8 신규 + 196/196 전체 PASS. Closes #32. | — |
+| `HARNESS-CHG-20260428-27` | 2026-04-28 | infra | [27.A2.plan] LIGHT_PLAN 산출물 동봉 — `docs/impl/32-pr-time-test-sync-gate.md` 추가 ([26.3] [27.A1.plan] 패턴과 일관). | — |
+| `HARNESS-CHG-20260428-27` | 2026-04-28 | infra | [27.A2.fixup] PR review 반영 — `check_test_sync.py` REPO_ROOT 상수 추가 + `CHECK_TEST_SYNC_ROOT` env 오버라이드로 silent wrong-repo 방지. docstring 오타 "무효 사유 사유" → "무효 사유 메시지". `test_check_test_sync.py` import tempfile 상단 통합 + env 주입 격리. `orchestration/policies.md` "갱신 예정" 문구 → §6 §8 현 상태 반영. pytest 8/8 + 196/196 PASS. | — |
 
 ---
 

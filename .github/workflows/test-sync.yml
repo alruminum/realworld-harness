@@ -1,0 +1,38 @@
+name: Test Sync Gate
+
+# 거버넌스 자동 게이트 — PR 단계.
+# orchestration/policies.md §8 룰을 PR base..head diff 에 적용.
+# harness/ 또는 hooks/ 변경 + tests/** 변경 0 + Tests-Exception 없음 → 머지 차단.
+#
+# 우회: PR body 또는 commit msg 에 'Tests-Exception: <10자 이상 사유>' 명시.
+# Spec: orchestration/policies.md §8, scripts/check_test_sync.py
+
+on:
+  pull_request:
+    branches: [main]
+
+# Node.js 20 deprecation 우회 — smoke-test.yml 와 동일.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  test-sync:
+    name: check_test_sync.py base..head
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run Test Sync Gate
+        run: |
+          python3 scripts/check_test_sync.py \
+            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.head.sha }}"

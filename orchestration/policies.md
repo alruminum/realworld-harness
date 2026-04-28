@@ -3,7 +3,7 @@
 > 운영 룰 카탈로그. 헌법(`docs/harness-spec.md`)이 *무엇을·왜* 강제하는지 정의한다면, 본 문서는 워크플로우 변경의 *기록·추적·검증* 절차를 정의한다.
 
 작성: 2026-04-27 (Phase 0 가벼운 버전)
-다음 갱신 예정: Phase 2 — 자동 게이트(`scripts/check_doc_sync.py`) 활성화 시점
+§6 doc-sync, §8 test-sync 활성. 차기 게이트 추가 시 갱신.
 
 ---
 
@@ -130,7 +130,43 @@ def classify(file_path: str) -> ChangeType:
 
 ---
 
-## 7. 본 문서 갱신 룰
+## 8. test-sync 게이트 (PR-time)
+
+> 같은 패턴: §3 Document-Exception (`scripts/check_doc_sync.py`) 와 골격 공유. 본 §8 은 코드 변경에 대한 회귀 테스트 동반 강제만 다룬다.
+
+### 8.1 트리거 경로
+
+| 토큰 | 감시 경로 | 동반 필수 |
+|---|---|---|
+| `code` | `harness/`, `hooks/` | `tests/**` 아래 1개 이상 변경 |
+
+비트리거: `docs/`, `agents/`, `scripts/` 자체, `.github/`, `prd.md`, `trd.md`, `templates/`, `orchestration/` — 본 게이트 미적용 (§2~3 doc-sync 게이트는 별도).
+
+### 8.2 Tests-Exception 스코핑
+
+동반 테스트 추가가 어려운 경우 (docstring/comment-only refactor, mass-rename 등) 커밋 메시지 또는 PR 본문에 명시:
+
+```
+Tests-Exception: <10자 이상 사유>
+```
+
+판정 룰 (§3 Document-Exception 와 동일):
+- 유효: 현재 diff 의 *추가 라인* 또는 현재 commit msg 에 마커 + 사유 ≥ 10자
+- 무효: 과거 commit / 과거 changelog 엔트리 재사용 불가
+- 사유 길이: 최소 10자 (단순 "skip" 거부)
+
+### 8.3 통합 지점
+
+- CI: GitHub Actions `pull_request` → `scripts/check_test_sync.py $BASE $HEAD` (.github/workflows/test-sync.yml)
+- 로컬 (선택): `git commit` 시 pre-commit 훅 — Stage A2 범위 외 (epic #30 후속 단계)
+
+### 8.4 본 게이트가 있었으면 차단됐을 사례
+
+[14.1]~[14.5] 5건 연속 commit. 모두 harness/ or hooks/ 코드 변경 + tests 0 + Tests-Exception 미명시. retroactive 시뮬레이션 결과는 issue #32 PR body 에 첨부.
+
+---
+
+## 9. 본 문서 갱신 룰
 
 - 본 문서 자체의 변경은 `Change-Type: spec` 으로 분류 (감시 경로 `docs/proposals.md`와 동일 우선순위 적용)
 - 즉, 본 문서를 바꾸려면 `changelog.md` + `rationale.md` 양쪽 항목이 필요
