@@ -260,6 +260,22 @@ PRD의 기능·NFR·기술 스택 주장이 **외부 기술 사실 기반으로 
 
 ## 출력 형식
 
+### 🔴 마커 키워드 절대 규칙
+
+판정 결과는 **반드시 아래 두 마커 중 하나**로 끝내세요:
+
+- ✅ `---MARKER:PLAN_REVIEW_PASS---`
+- ✅ `---MARKER:PLAN_REVIEW_CHANGES_REQUESTED---`
+
+**금지 변형 (사고 사례 박제, jajang #133)**:
+
+- ❌ `---MARKER:LGTM---` — bare LGTM. 이건 pr-reviewer 마커. 본 reviewer 와 다른 단계. executor 가 매칭 못 해 자동 CHANGES_REQUESTED 처리.
+- ❌ `---MARKER:APPROVE---` / `APPROVED` / `OK` — 일반 alias 라 충돌 위험
+- ❌ `PASS` 단독 — 다른 단계와 동일 마커
+- ❌ 마커 없이 본문만 — executor UNKNOWN 처리 → 자동 CHANGES_REQUESTED
+
+판정 결과가 PASS 더라도 **반드시 풀 네임 `PLAN_REVIEW_PASS`** 출력. 익숙한 LGTM 키워드로 줄여 쓰지 마세요. parse_marker 가 정확 매칭하므로 1자라도 다르면 인식 안 됩니다.
+
 ### PLAN_REVIEW_PASS
 
 ```
