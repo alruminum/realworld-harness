@@ -25,7 +25,15 @@ from typing import List
 _V1_ENGINEER_SCOPE_PATHSPECS: List[str] = ["src/"]
 _V1_ENGINEER_SCOPE_EXTRACT_REGEX = r"src/[^ `\"':()]+\.(?:ts|tsx|js|jsx)"
 _V1_UI_COMPONENTS_PATHS: List[str] = ["src/components"]
-_V1_TEST_PATHS_REGEX = r"src/[^ ]+\.(?:test|spec)\.[jt]sx?"
+# V1 fallback test regex 보강 (G4 — pytest + jest/vitest 디렉토리 패턴 추가).
+# 기존 `src/...\.test\.[jt]sx?` 를 첫 번째 OR 절로 유지하여 기존 호출자 호환.
+# 이 regex 를 helpers._is_test_file() 이 재사용 (SSOT, G4 결정).
+_V1_TEST_PATHS_REGEX = (
+    r"src/[^ ]+\.(?:test|spec)\.[jt]sx?"          # 기존 (src/ 고정 — 호환성 유지)
+    r"|(?:^|/)(?:tests|__tests__)/[^ ]+"           # /tests/ 또는 /__tests__/ 디렉토리
+    r"|(?:^|/)test_[^/ ]+\.py"                     # test_*.py (pytest 표준)
+    r"|[^ /]+_test\.py"                            # *_test.py (pytest 표준)
+)
 
 _CACHE: dict = {}  # per-process 캐시 — config 재로드 회피
 
@@ -215,7 +223,10 @@ def test_paths_extract_regex() -> "re.Pattern[str]":
             )
     dirs = _engineer_scope_dirs()
     parts = [re.escape(d).replace(r"\*", "[^/]+") for d in dirs]
-    body = "(?:" + "|".join(parts) + r")/[^ ]+\.(?:test|spec)\.[jt]sx?"
+    # V2 자동 합성: engineer_scope 기반 디렉토리 패턴
+    scope_body = "(?:" + "|".join(parts) + r")/[^ ]+\.(?:test|spec)\.[jt]sx?"
+    # V1 보강 패턴(pytest/jest 디렉토리)을 OR 로 합산 — scope 밖 tests/ 도 매칭
+    body = scope_body + "|" + _V1_TEST_PATHS_REGEX
     try:
         return re.compile(body)
     except re.error:

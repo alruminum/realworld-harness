@@ -17,13 +17,20 @@ from typing import Callable, Optional, Tuple
 try:
     from .core import (
         Flag, RunLogger, StateDir, hlog, write_attempt_meta,
+        _PLAN_PREFIXES,  # type: ignore[attr-defined]
     )
     from .tracker import format_ref
+    from .path_resolver import test_paths_extract_regex
 except ImportError:
-    from core import (
+    from core import (  # type: ignore[import]
         Flag, RunLogger, StateDir, hlog, write_attempt_meta,
+        _PLAN_PREFIXES,  # type: ignore[attr-defined]
     )
-    from tracker import format_ref
+    from tracker import format_ref  # type: ignore[import]
+    from path_resolver import test_paths_extract_regex  # type: ignore[import]
+
+# 1회 컴파일 캐시 (path_resolver 가 cfg/v2 분기를 이미 처리함 — G4 결정)
+_TEST_RE = test_paths_extract_regex()
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -224,22 +231,135 @@ def append_success(
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# 4. rollback_attempt — 롤백 이벤트 기록
+# 4. no_changes 분기 헬퍼 — 직전 커밋 분류 + 롤백 (Issue #34)
+# ═══════════════════════════════════════════════════════════════════════
+
+def _is_test_file(path: str) -> bool:
+    """test-only 분류용 — path_resolver SSOT regex 위임 (G4)."""
+    return bool(_TEST_RE.search(path))
+
+
+def _is_plan_file(path: str) -> bool:
+    """plan 문서 분류용 — core._PLAN_PREFIXES SSOT import (G1)."""
+    return any(path.startswith(p) for p in _PLAN_PREFIXES)
+
+
+def _classify_last_commit_files(files: list) -> str:
+    """직전 커밋 파일 목록을 5개 카테고리 중 하나로 분류.
+
+    반환값:
+      "empty"        — 파일 없음 (git commit --allow-empty 등)
+      "test_only"    — 모두 test 파일
+      "plan_only"    — 모두 plan 문서
+      "test_and_plan"— test + plan 혼합 (둘 다 OK)
+      "mixed"        — 위 3개 외 파일이 1개라도 포함 → escalate 대상
+    """
+    if not files:
+        return "empty"
+    has_test = False
+    has_plan = False
+    for f in files:
+        if _is_test_file(f):
+            has_test = True
+        elif _is_plan_file(f):
+            has_plan = True
+        else:
+            return "mixed"
+    if has_test and has_plan:
+        return "test_and_plan"
+    if has_test:
+        return "test_only"
+    return "plan_only"
+
+
+def _hard_reset_worktree(
+    feature_branch: Optional[str],
+    cwd: Optional[str],
+    run_logger: Optional[RunLogger],
+) -> str:
+    """fallback chain 으로 worktree HEAD 를 이전 커밋으로 되돌린다.
+
+    반환값: 사용된 reset 타겟 ("origin/<br>" / "HEAD~1" / "skipped").
+    fallback chain:
+      1차: git rev-parse --verify origin/<feature_branch> → 성공 시 reset --hard
+      2차: git rev-parse --verify HEAD~1 → 성공 시 reset --hard HEAD~1
+      3차: skip + 경고 로그 (첫 커밋 직후 등 극히 드문 케이스)
+    """
+    import subprocess as _sp
+    _run = (
+        (lambda *a, **kw: _sp.run(*a, cwd=cwd, **kw))
+        if cwd
+        else _sp.run
+    )
+
+    target = "skipped"
+    if feature_branch:
+        r = _run(
+            ["git", "rev-parse", "--verify", "--quiet",
+             f"refs/remotes/origin/{feature_branch}"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode == 0:
+            target = f"origin/{feature_branch}"
+
+    if target == "skipped":
+        # HEAD~1 fallback
+        r = _run(
+            ["git", "rev-parse", "--verify", "--quiet", "HEAD~1"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode == 0:
+            target = "HEAD~1"
+
+    if target != "skipped":
+        _run(
+            ["git", "reset", "--hard", target],
+            capture_output=True, text=True, timeout=10,
+        )
+        hlog(f"ROLLBACK hard reset → {target}")
+    else:
+        hlog("ROLLBACK skipped — neither origin/<branch> nor HEAD~1 available")
+
+    if run_logger:
+        run_logger.log_event({
+            "event": "rollback_hard_reset",
+            "target": target,
+            "branch": feature_branch or "",
+            "t": int(time.time()),
+        })
+    return target
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 4b. rollback_attempt — 롤백 이벤트 기록 (시그니처 확장)
 # ═══════════════════════════════════════════════════════════════════════
 
 def rollback_attempt(
     attempt_num: int,
     run_logger: Optional[RunLogger] = None,
+    *,
+    hard_reset: bool = False,
+    feature_branch: Optional[str] = None,
+    cwd: Optional[str] = None,
 ) -> None:
-    """JSONL rollback 이벤트 기록."""
+    """JSONL rollback 이벤트 기록 + (옵션) 실제 git reset.
+
+    기존 호출자(impl_loop.py 14개 호출처): 위치인자만 사용 → keep-on-branch 동작 유지.
+    no_changes mixed/empty 분기에서만 hard_reset=True 로 호출 (stranded 방지 — Issue #34).
+    """
+    method = "keep-on-branch"
+    if hard_reset:
+        target = _hard_reset_worktree(feature_branch, cwd, run_logger)
+        method = f"hard-reset:{target}"
+
     if run_logger:
         run_logger.log_event({
             "event": "rollback",
             "attempt": attempt_num,
-            "method": "keep-on-branch",
+            "method": method,
             "t": int(time.time()),
         })
-    hlog(f"ROLLBACK attempt={attempt_num} — changes kept on feature branch")
+    hlog(f"ROLLBACK attempt={attempt_num} method={method}")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -304,10 +424,41 @@ def run_automated_checks(
             has_committed = True
 
     if not has_uncommitted and not has_committed:
-        msg = "no_changes: engineer가 아무 파일도 수정하지 않음"
-        out_file.write_text(msg, encoding="utf-8")
-        print("AUTOMATED_CHECKS_FAIL: no_changes")
-        return False, msg
+        # 직전 커밋 파일 검사 — test-only / plan-only 정상 케이스는 PASS 처리 (Issue #34).
+        # engineer 가 회귀 테스트 파일만 커밋한 경우 engineer_scope 미변경으로
+        # no_changes 오판 → escalate + stranded 발생 방지.
+        r_log = _run(
+            ["git", "log", "-1", "--name-only", "--format="],
+            capture_output=True, text=True, timeout=5,
+        )
+        last_commit_files = (
+            [f.strip() for f in (r_log.stdout or "").splitlines() if f.strip()]
+            if r_log.returncode == 0
+            else []
+        )
+        classification = _classify_last_commit_files(last_commit_files)
+
+        if classification in ("test_only", "plan_only", "test_and_plan"):
+            # PASS 처리 — 후속 검사(2~7) 그대로 fall-through.
+            # checks 2~4 (package.json/PROTECTED/ImplScopeGuard) 는 워킹트리 vs HEAD
+            # 비교라 commit 후 자동 통과 (의도된 동작).
+            # checks 5~7 (lint/build/test) 만 실질적 추가 검증 수행 (설정 있을 때).
+            hlog(
+                f"no_changes 분기에서 {classification} commit 발견 — PASS 처리 "
+                f"(파일 {len(last_commit_files)}개)"
+            )
+            # fall-through to checks 2~7 (package.json/PROTECTED/Scope/lint/build/test).
+        else:
+            # mixed / empty — escalate + caller 가 hard_reset=True 로 rollback 수행.
+            # "no_changes:" prefix 유지 — impl_loop.py caller 의
+            # `check_err.startswith("no_changes:")` 분기 호환.
+            msg = (
+                f"no_changes: 직전 커밋 분류={classification}, "
+                f"파일={last_commit_files[:5]}"
+            )
+            out_file.write_text(msg, encoding="utf-8")
+            print(f"AUTOMATED_CHECKS_FAIL: no_changes ({classification})")
+            return False, msg
 
     # 2. package.json 새 의존성 감지
     r_show = _run(
