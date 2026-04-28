@@ -248,6 +248,9 @@ def run_plan(
             pr_content = Path(pr_out_file).read_text(encoding="utf-8", errors="replace") if Path(pr_out_file).exists() else ""
             print(pr_content[-1000:] if len(pr_content) > 1000 else pr_content)
             run_logger.write_run_end("PLAN_REVIEW_CHANGES_REQUESTED", "", issue_num)
+            # 마커 미감지여도 PRD 자체는 이미 작성됨 — 체크포인트 보존하여 재시도 시
+            # planner 처음부터 안 돌도록 partial metadata 저장.
+            save_plan_checkpoint(state_dir, prefix, prd_path, issue_num)
             return "PLAN_REVIEW_CHANGES_REQUESTED"
 
         hud.agent_done("plan-reviewer", int(time.time() - _pr_t0), _pr_cost)
