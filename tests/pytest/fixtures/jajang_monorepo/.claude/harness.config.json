@@ -1,0 +1,14 @@
+{
+  "prefix": "jajang",
+  "engineer_scope": [
+    "(^|/)src/",
+    "(^|/)apps/[^/]+/src/",
+    "(^|/)apps/[^/]+/app/",
+    "(^|/)apps/[^/]+/alembic/",
+    "(^|/)packages/[^/]+/src/",
+    "(^|/)apps/[^/]+/[^/]+\\.toml$",
+    "(^|/)apps/[^/]+/[^/]+\\.cfg$",
+    "(^|/)services/[^/]+/src/",
+    "(^|/)libs/[^/]+/src/"
+  ]
+}
