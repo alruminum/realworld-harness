@@ -59,6 +59,7 @@
 | `HARNESS-CHG-20260428-13.1` | 2026-04-28 | docs | Phase 2 Iter 1 (W1+W3) — 가드 카탈로그 7개 (5개 W2 포함 / 2개 제외: issue-gate, plugin-write-guard) + spec §0 [invariant-shift] PR 토큰 정식 도입 + §3 I-1/I-2/I-7/I-9 보호 대상↔모델 분리 + architecture §5.6/§5.7 Layered Defense + §5.8 Staged Rollout + rationale 4섹션 + 5번째 위험 패턴 (Cross-guard Silent Dependency Chain) | — |
 | `HARNESS-CHG-20260428-13.2` | 2026-04-28 | infra | Phase 2 Iter 2 (W2+W4) — 5 가드 + 1 ralph fallback + Layered Defense 보강. config.py engineer_scope 필드 + tracker.MUTATING_SUBCOMMANDS SSOT + harness_common 4개 헬퍼(_load_engineer_scope/auto_gc_stale_flag/_verify_live_json_writable/_STATIC_ENGINEER_SCOPE) + session_state.update_live 쓰기 실패 stderr 표준화 + executor.py round-trip canary(always-on) + HARNESS_ACTIVE flag heartbeat + agent-boundary/commit-gate/agent-gate/skill-gate/skill-stop-protect V2 분기 + ralph-session-stop 3-layer fallback(HARNESS_GUARD_V2_RALPH_FALLBACK, default off). 모든 V2 env unset 시 v1 동작 100% 회귀 0. py_compile + smoke-test 57/57 PASS. | — |
 | `HARNESS-CHG-20260428-14.1` | 2026-04-28 | infra | MARKER_ALIASES 12개 변형 추가 — PLAN_VALIDATION(PLAN_VALIDATED/PLAN_VERIFIED/PLAN_PASS/PLAN_INVALID) + LIGHT_PLAN_READY(LIGHT_PLAN_DONE/LIGHT_PLAN_COMPLETE/LIGHT_PLAN_WRITTEN/BUGFIX_PLAN_READY) + READY_FOR_IMPL(MODULE_PLAN_READY/MODULE_PLAN_DONE/IMPL_PLAN_READY/IMPL_READY/PLAN_DONE/PLAN_WRITTEN/PLAN_COMPLETE). validator/architect 가 canonical 대신 자유 텍스트 변형 emit 시 SPEC_GAP_ESCALATE / PLAN_VALIDATION_ESCALATE 로 attempt 무위 소진되던 사례 차단. defense in depth 2nd layer 두꺼워짐. | — |
+| `HARNESS-CHG-20260428-14.2` | 2026-04-28 | infra | WorktreeManager.create_or_reuse 에 untracked plan 파일 자동 복사 추가 — `git worktree add` 직후 main repo `ls-files --others --exclude-standard` 결과 중 `docs/bugfix/`, `docs/impl/`, `docs/milestones/` prefix 파일을 worktree 같은 상대경로로 cp. architect 가 main repo 에 LIGHT_PLAN 작성 후 commit 전 worktree 진입하면 engineer 가 'impl 파일 없음' no_changes 로 attempt 0 무위 소진되던 사고 차단. 안전 패턴: plan 디렉토리만 — src/ 등은 worktree 경계 보호 위해 제외. | — |
 
 ---
 
@@ -857,6 +858,36 @@ def _resolve_plugin_root() -> Path:
 **Linked**:
 - 선행 `HARNESS-CHG-20260428-09.1` — alias map 1차 도입.
 - 후속 (이번 6건 묶음): C2 worktree untracked plan / C3 TDD 순서 / C4 pr-reviewer scope / C5 no_changes 분리.
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-14.2` — 2026-04-28 — worktree untracked plan 파일 자동 포함
+
+**Type**: infra (worktree 격리 모드 첫 attempt 회수)
+
+**Branch**: `harness/worktree-include-untracked`
+
+**Issue**: `WorktreeManager.create_or_reuse` 가 `git worktree add` 만 호출 — tracked HEAD 만 가져옴. architect 가 main repo 에 작성한 `docs/bugfix/#NNN.md` / `docs/impl/*.md` 가 미커밋 상태로 worktree 진입 시 누락 → engineer attempt 0 에서 "impl 파일 존재하지 않음" no_changes 로 무위 종료. 매 신규 이슈마다 attempt 0 한 번을 통째로 태움.
+
+**범위 요약**:
+- `harness/core.py` `WorktreeManager._copy_untracked_plan_files(wt_path)` 추가 — worktree 진입 직후 main repo `git ls-files --others --exclude-standard` 결과 필터링 후 worktree 같은 상대경로로 `shutil.copy2`.
+- 안전 패턴: `docs/bugfix/`, `docs/impl/`, `docs/milestones/` 3개 prefix 만. `src/` 등 코드 영역은 worktree 경계 보호 위해 명시적 제외.
+- 복사 건수 stdout 가시화 (`worktree 진입: untracked plan 파일 N개 복사`).
+
+**검증**:
+- `python3 -m py_compile harness/core.py` — OK.
+- 임시 git repo + untracked `docs/bugfix/#42-test.md` + `docs/impl/99-something.md` + 비-plan `random.md` 시나리오 — bugfix/impl 복사 ✓, random 복사 안 함 ✓, 내용 정확 ✓.
+
+**비변경 (의도)**:
+- tracked plan 파일 — 이미 worktree add 가 가져옴. 중복 cp 안 함 (ls-files --others 결과에 없음).
+- src/ untracked — worktree 경계 보호. engineer 가 worktree 안에서 직접 작성해야 함.
+- 자동 commit — 미커밋 상태로 cp 만. main repo 의 untracked 도 그대로 보존.
+
+**Linked**:
+- 선행 `HARNESS-CHG-20260428-14.1` — 같은 묶음의 1번째 fix.
+- 후속 (이번 6건 묶음): C3 TDD 순서 / C4 pr-reviewer scope / C5 no_changes 분리.
 
 **Exception**: —
 
