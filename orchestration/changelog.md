@@ -62,6 +62,7 @@
 | `HARNESS-CHG-20260428-14.1` | 2026-04-28 | infra | MARKER_ALIASES 12개 변형 추가 — PLAN_VALIDATION(PLAN_VALIDATED/PLAN_VERIFIED/PLAN_PASS/PLAN_INVALID) + LIGHT_PLAN_READY(LIGHT_PLAN_DONE/LIGHT_PLAN_COMPLETE/LIGHT_PLAN_WRITTEN/BUGFIX_PLAN_READY) + READY_FOR_IMPL(MODULE_PLAN_READY/MODULE_PLAN_DONE/IMPL_PLAN_READY/IMPL_READY/PLAN_DONE/PLAN_WRITTEN/PLAN_COMPLETE). validator/architect 가 canonical 대신 자유 텍스트 변형 emit 시 SPEC_GAP_ESCALATE / PLAN_VALIDATION_ESCALATE 로 attempt 무위 소진되던 사례 차단. defense in depth 2nd layer 두꺼워짐. | — |
 | `HARNESS-CHG-20260428-14.2` | 2026-04-28 | infra | WorktreeManager.create_or_reuse 에 untracked plan 파일 자동 복사 추가 — `git worktree add` 직후 main repo `ls-files --others --exclude-standard` 결과 중 `docs/bugfix/`, `docs/impl/`, `docs/milestones/` prefix 파일을 worktree 같은 상대경로로 cp. architect 가 main repo 에 LIGHT_PLAN 작성 후 commit 전 worktree 진입하면 engineer 가 'impl 파일 없음' no_changes 로 attempt 0 무위 소진되던 사고 차단. 안전 패턴: plan 디렉토리만 — src/ 등은 worktree 경계 보호 위해 제외. | — |
 | `HARNESS-CHG-20260428-14.3` | 2026-04-28 | infra | TDD 순서 강제 — impl_loop.py:928 `_tdd_active` 조건에서 `bool(config.test_command)` 의존성 제거. 1209 의 옛 폴백(engineer→test-engineer, OLD 순서) elif 블록 제거. test_command 부재가 TDD 자체를 끄지 않도록 — 테스트 작성은 회귀 방어 + impl 명세 검증 목적도 있고, RED/GREEN 실측 게이트만 test_command 가드 유지. jajang 류 std/deep 프로젝트에서 engineer 가 test-engineer 보다 먼저 실행되던 룰 위반 차단. | — |
+| `HARNESS-CHG-20260428-14.4` | 2026-04-28 | docs  | pr-reviewer.md 에 에이전트 스코프 매트릭스 섹션 추가 — `hooks/agent-boundary.py` `ALLOW_MATRIX` 명시 + 스코프 밖 파일(docs/bugfix/**, docs/impl/**, package.json 등) 발견 시 NICE TO HAVE 강등 + 라우팅 권고 명시. MUST FIX 는 engineer/test-engineer 스코프 안 파일에만 발행. pr-reviewer 가 boundary 모르고 모든 영역에 MUST FIX 발행 → engineer boundary 차단 → no_changes 사이클 차단. | — |
 
 ---
 
@@ -980,6 +981,38 @@ def _resolve_plugin_root() -> Path:
 **Linked**:
 - 선행 `HARNESS-CHG-20260428-14.1`/`14.2` — 같은 묶음.
 - 후속: C4 pr-reviewer scope / C5 no_changes 분리.
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-14.4` — 2026-04-28 — pr-reviewer 에이전트 스코프 매트릭스 인지
+
+**Type**: docs (agent docs 강화 — boundary 사이클 차단)
+
+**Branch**: `harness/pr-reviewer-scope-aware`
+
+**Issue**: pr-reviewer 가 `hooks/agent-boundary.py` `ALLOW_MATRIX` 를 모르고 `docs/bugfix/**`, `package.json`, `docs/impl/**` 등 engineer 스코프 밖 파일에 MUST FIX 발행 → engineer 가 boundary 차단으로 처리 불가 → no_changes → harness retry → 같은 boundary 또 차단 → MAX(3) 소진까지 의미 없는 attempt 가 비용($1.5+) 태움.
+
+**범위 요약**:
+- `agents/pr-reviewer.md` 에 "에이전트 스코프 매트릭스 (반드시 인지)" 섹션 추가:
+  - engineer 가 수정 가능한 영역 (src/**, apps/<name>/src/, apps/<name>/app/, apps/<name>/alembic/, packages/<name>/src/, *.toml/cfg) 명시.
+  - test-engineer 가 수정 가능한 영역 (테스트 파일 한정) 명시.
+  - 스코프 밖 파일별 소유 에이전트 매트릭스 (architect/designer/ux-architect/product-planner/사용자 직접/인프라).
+  - 규칙 3개: MUST FIX 는 스코프 안만 / 스코프 밖은 NICE TO HAVE + 라우팅 권고 / 인프라는 언급 금지.
+  - Why: boundary 사이클로 attempt 비용 폭주 막기 위함.
+
+**검증**:
+- agents/pr-reviewer.md grep — "에이전트 스코프 매트릭스" 섹션 존재 ✓.
+- `agents/pr-reviewer.md:184` 기존 "인프라 파일 읽기 금지" 룰과 충돌 없음 (보강 관계).
+
+**비변경 (의도)**:
+- `hooks/agent-boundary.py` ALLOW_MATRIX — 실제 강제는 그대로. 본 변경은 agent docs 만.
+- pr-reviewer 의 MUST FIX/NICE TO HAVE 분류 체크리스트 — 그대로 (A~G). 스코프 매트릭스는 그 위에 적용되는 라우팅 룰.
+
+**Linked**:
+- 선행 `HARNESS-CHG-20260428-14.1~14.3` — 같은 묶음.
+- 후속: C5 no_changes 별도 fail_type 분리 (boundary 사이클의 회로 단계).
 
 **Exception**: —
 
