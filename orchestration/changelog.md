@@ -243,4 +243,27 @@
 
 ---
 
+## `HARNESS-CHG-20260428-02` — 2026-04-28 — 추적 ID 추상화 follow-up (잔존 흠 + 부수발견 수리)
+
+**Type**: infra (코드 + 테스트, spec 변경 없음)
+
+**Branch**: `harness/tracker-cleanup`
+
+**Issue**: 별도 추적 ID 미발급 — 직전 `HARNESS-CHG-20260428-01` (LOCAL-1) 의 자연 후속. 진단(2026-04-28) 시점에 유저 수리 지시 명시 ("잔존 홀이랑 부수발견 수리" + "1+2 후보도 같이 처리해줘" → smoke-test 통합)
+
+**Sub-commits**:
+- `[2.1]` `7a5a64f` `harness/tracker.py` (+50) — `IssueRef.internal` property + `format_ref()` + `normalize_issue_num()` + parse_ref 멱등 확장. `tests/pytest/test_tracker.py` (+60) 16→33 케이스
+- `[2.2]` `942cb7d` 7파일 정합 — `core.py` 의 `gh issue view` → `tracker.get_issue()` 위임 + f-string `#{issue_num}` → `{format_ref(issue_num)}` 일괄 교체 + executor 진입 `normalize_issue_num` 적용
+- `[2.3]` `0a31611` `scripts/smoke-test.sh` §9 신규 — tracker LOCAL-N regression 회로 5 케이스 (56/56 PASS)
+- `[2.4]` (본 commit) `rationale.md` 4섹션 + Task-ID 본문 + PR
+
+**Linked**:
+- `HARNESS-CHG-20260428-01` (commit `c18003e`) — 추적 ID 추상화 (이번 정리의 모태)
+- 진단 보고: 유저 세션 (2026-04-28) — "잔존 홀이랑 부수발견 수리"
+- `[2.2]` 검증: py_compile 8/8 + unittest 33/33 + smoke-test 56/56
+
+**Exception**: —
+
+---
+
 > 새 항목은 위 표 + 본 섹션 양쪽에 추가. Phase 2 자동 게이트가 활성화되면 표는 `scripts/check_doc_sync.py` 가 갱신 검증.
