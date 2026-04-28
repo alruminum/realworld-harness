@@ -35,6 +35,7 @@
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | infra | Phase 4 [4.13] migrate-step1.sh + migrate-step2.sh 자동화 스크립트 — 사용자 확인·안전 검사·롤백 안내 내장 | — |
 | `HARNESS-CHG-20260427-05` | 2026-04-27 | infra | Phase 4 [4.14] marketplace.json/plugin.json 스키마 정정 — Claude Code parser 기준 (top-level name + owner object + repository string) | — |
 | `HARNESS-CHG-20260427-06` | 2026-04-27 | infra | v0.2.0 [6.1] setup-rwh.sh 플러그인 모드 분기 — CLAUDE_PLUGIN_ROOT set 시 글로벌 settings.json 훅 등록 skip (Phase 4 잔존 부채 #1 해결) | — |
+| `HARNESS-CHG-20260428-01` | 2026-04-28 | infra | [1.1] harness/tracker.py — 추적 ID 백엔드 추상화 (GitHub gh CLI / Local jsonl) + 단위 테스트 16/16 | — |
 
 ---
 
