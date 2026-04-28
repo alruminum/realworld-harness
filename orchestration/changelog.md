@@ -63,6 +63,7 @@
 | `HARNESS-CHG-20260428-14.2` | 2026-04-28 | infra | WorktreeManager.create_or_reuse 에 untracked plan 파일 자동 복사 추가 — `git worktree add` 직후 main repo `ls-files --others --exclude-standard` 결과 중 `docs/bugfix/`, `docs/impl/`, `docs/milestones/` prefix 파일을 worktree 같은 상대경로로 cp. architect 가 main repo 에 LIGHT_PLAN 작성 후 commit 전 worktree 진입하면 engineer 가 'impl 파일 없음' no_changes 로 attempt 0 무위 소진되던 사고 차단. 안전 패턴: plan 디렉토리만 — src/ 등은 worktree 경계 보호 위해 제외. | — |
 | `HARNESS-CHG-20260428-14.3` | 2026-04-28 | infra | TDD 순서 강제 — impl_loop.py:928 `_tdd_active` 조건에서 `bool(config.test_command)` 의존성 제거. 1209 의 옛 폴백(engineer→test-engineer, OLD 순서) elif 블록 제거. test_command 부재가 TDD 자체를 끄지 않도록 — 테스트 작성은 회귀 방어 + impl 명세 검증 목적도 있고, RED/GREEN 실측 게이트만 test_command 가드 유지. jajang 류 std/deep 프로젝트에서 engineer 가 test-engineer 보다 먼저 실행되던 룰 위반 차단. | — |
 | `HARNESS-CHG-20260428-14.4` | 2026-04-28 | docs  | pr-reviewer.md 에 에이전트 스코프 매트릭스 섹션 추가 — `hooks/agent-boundary.py` `ALLOW_MATRIX` 명시 + 스코프 밖 파일(docs/bugfix/**, docs/impl/**, package.json 등) 발견 시 NICE TO HAVE 강등 + 라우팅 권고 명시. MUST FIX 는 engineer/test-engineer 스코프 안 파일에만 발행. pr-reviewer 가 boundary 모르고 모든 영역에 MUST FIX 발행 → engineer boundary 차단 → no_changes 사이클 차단. | — |
+| `HARNESS-CHG-20260428-14.5` | 2026-04-28 | infra | impl_loop.py automated_checks 분기에 `no_changes` 별도 fail_type 추가 — `check_err.startswith("no_changes:")` 시 즉시 `IMPLEMENTATION_ESCALATE` (run_simple/_run_std_deep 양쪽). 옛 동작: 모든 autocheck 실패가 `autocheck_fail` 로 단일 분류 → circuit breaker 가 2회 누적 후에야 fire → boundary block 시 attempt 2회 무위 ($1.5+) 소진. 새 동작: no_changes 1회만에 escalate (boundary block / missing impl / 컨텍스트 손실 등 retry 무의미한 카테고리). | — |
 
 ---
 
@@ -1013,6 +1014,36 @@ def _resolve_plugin_root() -> Path:
 **Linked**:
 - 선행 `HARNESS-CHG-20260428-14.1~14.3` — 같은 묶음.
 - 후속: C5 no_changes 별도 fail_type 분리 (boundary 사이클의 회로 단계).
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-14.5` — 2026-04-28 — no_changes 별도 fail_type 분리 + 즉시 escalate
+
+**Type**: infra (retry 비용 회로)
+
+**Branch**: `harness/no-changes-fail-type-split`
+
+**Issue**: `helpers.py:301` 에서 engineer 가 아무 파일도 수정 안 했을 때 `no_changes:` 메시지 emit, impl_loop 양쪽 분기는 모두 `fail_type = "autocheck_fail"` 로 단일 분류. circuit breaker 는 같은 fail_type 2회 누적 후에야 fire 하므로 boundary block 시 attempt 0+1 모두 같은 차단을 반복하다가 attempt 2 시작 시점에서야 escalate. 비용 $1.5+ 무의미 소진.
+
+**범위 요약**:
+- `harness/impl_loop.py` `run_simple` autocheck 실패 분기에 `if check_err.startswith("no_changes:"):` 분기 추가 — fail_type = `"no_changes"` 로 분리, 1회만에 즉시 `IMPLEMENTATION_ESCALATE`. record_escalate / write_run_end / Flag.PLAN_VALIDATION_PASSED rm 처리.
+- `harness/impl_loop.py` `_run_std_deep` autocheck 실패 분기에 동일 패턴 추가 (run_simple 과 같은 사유).
+- 기존 `autocheck_fail` 분기는 그대로 — 다른 autocheck 실패(new_deps / file_unchanged / impl scope guard 등) 는 retry 가능성이 있어 기존 circuit breaker 흐름 유지.
+
+**검증**:
+- `python3 -m py_compile harness/impl_loop.py` — OK.
+- regex 점검 — `check_err.startswith("no_changes:")` 분기 2회 (run_simple + _run_std_deep), `IMPLEMENTATION_ESCALATE (no_changes)` 출력 2회 ✓.
+
+**비변경 (의도)**:
+- `helpers.py` `run_automated_checks` 시그니처 / 반환 — 그대로. 호출 측에서 `check_err` prefix 로 분기.
+- circuit breaker 윈도우/임계값 — 그대로. no_changes 만 단일 회로로 분리, 다른 fail_type 은 영향 없음.
+- agent-boundary 강제 — 그대로. boundary 자체는 손대지 않고 그 결과(no_changes) 를 빠르게 escalate.
+
+**Linked**:
+- 선행 `HARNESS-CHG-20260428-14.1~14.4` — 6건 묶음 마지막.
+- 보완 관계: `14.4` (pr-reviewer scope) 가 boundary 충돌 빈도 자체를 줄이고, `14.5` 는 충돌 발생 후 회로 차단.
 
 **Exception**: —
 

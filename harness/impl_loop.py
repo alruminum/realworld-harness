@@ -488,6 +488,34 @@ def run_simple(
         )
         if not check_ok:
             error_trace = check_err or "automated_checks FAIL"
+            # no_changes 는 별도 fail_type — boundary 차단 / missing impl / 컨텍스트
+            # 손실 등 같은 engineer 더 호출해도 안 풀리는 카테고리. retry 무의미하므로
+            # 1회만에 즉시 IMPLEMENTATION_ESCALATE (autocheck_fail circuit breaker
+            # 의 2회 윈도우 기다리지 않음 — attempt + 비용 폭주 방지).
+            if check_err.startswith("no_changes:"):
+                fail_type = "no_changes"
+                log_decision("fail_type", fail_type,
+                             "no_changes — boundary block / missing impl 의심, retry 무의미",
+                             run_logger, attempt)
+                append_failure(impl_file, fail_type, error_trace, state_dir, prefix)
+                try:
+                    shutil.copy2(
+                        str(state_dir.path / f"{prefix}_autocheck_fail.txt"),
+                        str(attempt_dir / "autocheck.log"),
+                    )
+                except OSError:
+                    pass
+                save_impl_meta(attempt_dir, attempt, "FAIL", depth, fail_type,
+                               "engineer 변경 없음 — boundary block / missing impl / 컨텍스트 손실 의심. 재시도 무의미.")
+                rollback_attempt(attempt, run_logger)
+                state_dir.flag_rm(Flag.PLAN_VALIDATION_PASSED)
+                os.environ["HARNESS_RESULT"] = "IMPLEMENTATION_ESCALATE"
+                hlog_fn("=== no_changes → IMPLEMENTATION_ESCALATE (1회만, retry 스킵) ===")
+                print("IMPLEMENTATION_ESCALATE (no_changes)")
+                print(f"branch: {feature_branch}")
+                record_escalate(state_dir, impl_file, fail_type)
+                run_logger.write_run_end("IMPLEMENTATION_ESCALATE", feature_branch, issue_num)
+                return "IMPLEMENTATION_ESCALATE"
             fail_type = "autocheck_fail"
             log_decision("fail_type", fail_type, "automated_checks failed", run_logger, attempt)
             append_failure(impl_file, "autocheck_fail", error_trace, state_dir, prefix)
@@ -1177,6 +1205,29 @@ def _run_std_deep(
         check_ok, check_err = run_automated_checks(impl_file, config, state_dir, prefix, cwd=work_cwd)
         if not check_ok:
             error_trace = check_err or "automated_checks FAIL"
+            # no_changes 별도 fail_type — retry 무의미하므로 즉시 IMPLEMENTATION_ESCALATE.
+            # (run_simple 과 동일 패턴; 사유는 거기 주석 참조).
+            if check_err.startswith("no_changes:"):
+                fail_type = "no_changes"
+                log_decision("fail_type", fail_type,
+                             "no_changes — boundary block / missing impl 의심, retry 무의미",
+                             run_logger, attempt)
+                append_failure(impl_file, fail_type, error_trace, state_dir, prefix)
+                try:
+                    shutil.copy2(str(state_dir.path / f"{prefix}_autocheck_fail.txt"), str(attempt_dir / "autocheck.log"))
+                except OSError:
+                    pass
+                save_impl_meta(attempt_dir, attempt, "FAIL", depth, fail_type,
+                               "engineer 변경 없음 — boundary block / missing impl / 컨텍스트 손실 의심. 재시도 무의미.")
+                rollback_attempt(attempt, run_logger)
+                state_dir.flag_rm(Flag.PLAN_VALIDATION_PASSED)
+                os.environ["HARNESS_RESULT"] = "IMPLEMENTATION_ESCALATE"
+                hlog_fn("=== no_changes → IMPLEMENTATION_ESCALATE (1회만, retry 스킵) ===")
+                print("IMPLEMENTATION_ESCALATE (no_changes)")
+                print(f"branch: {feature_branch}")
+                record_escalate(state_dir, impl_file, fail_type)
+                run_logger.write_run_end("IMPLEMENTATION_ESCALATE", feature_branch, issue_num)
+                return "IMPLEMENTATION_ESCALATE"
             fail_type = "autocheck_fail"
             log_decision("fail_type", fail_type, "automated_checks failed", run_logger, attempt)
             append_failure(impl_file, "autocheck_fail", error_trace, state_dir, prefix)
