@@ -39,7 +39,7 @@ if is_global and hooks_changed:
             "hookEventName": "PostToolUse",
             "additionalContext": (
                 "⚠️ [GLOBAL HARNESS] settings.json hooks 섹션 변경됨\n"
-                "→ PreToolUse/PostToolUse 훅을 추가/수정했다면 ~/.claude/setup-harness.sh에도 반영 필요\n"
+                "→ PreToolUse/PostToolUse 훅을 추가/수정했다면 플러그인의 `hooks/hooks.json` 또는 `scripts/setup-rwh.sh`에도 반영 필요\n"
                 "→ allowedTools / permissions / enabledPlugins 변경은 해당 없음"
             )
         }
@@ -51,7 +51,7 @@ elif not is_global and hooks_changed:
             "hookEventName": "PostToolUse",
             "additionalContext": (
                 "🚫 [HARNESS] 프로젝트 settings.json에 hooks 섹션 추가 금지!\n"
-                "모든 훅은 ~/.claude/settings.json(전역)에서만 관리한다.\n"
+                "모든 훅은 플러그인의 `hooks/hooks.json` (자동 로드) 또는 전역 `~/.claude/settings.json` 에서만 관리한다.\n"
                 "프로젝트 settings.json에는 env + allowedTools만 허용.\n"
                 "→ 방금 추가한 hooks를 즉시 제거하라."
             )

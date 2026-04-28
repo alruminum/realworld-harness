@@ -80,7 +80,7 @@ def main() -> None:
                 "정상 경로:\n"
                 "- 커스텀 스킬/커맨드는 ~/.claude/commands/*.md 에 두세요.\n"
                 "- 에이전트 프로젝트 컨텍스트는 .claude/agent-config/*.md 에 두세요.\n"
-                "- 오피셜 플러그인 버그는 선행 훅(~/.claude/hooks/*.py)으로 우회하세요.\n"
+                "- 오피셜 플러그인 버그는 선행 훅(`${CLAUDE_PLUGIN_ROOT}/hooks/*.py` 또는 자체 플러그인의 hooks)으로 우회하세요.\n"
                 f"- 정말 필요하면: export {ALLOW_ENV}=1 후 같은 세션에서 재시도."
             )
 

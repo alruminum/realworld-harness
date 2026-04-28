@@ -16,7 +16,7 @@
 
 ### 호출
 - `harness/core.py::RunLogger.write_run_end` 에서 자동 호출
-- CLI 테스트: `python3 ~/.claude/harness/notify.py HARNESS_DONE mb 129 2712 3.42`
+- CLI 테스트: `python3 "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/harness/notify.py" HARNESS_DONE mb 129 2712 3.42`
 """
 
 from __future__ import annotations
