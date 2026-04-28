@@ -51,6 +51,7 @@
 | `HARNESS-CHG-20260428-06` | 2026-04-28 | infra | [6.1] AI 패닉 회로 차단 — agent-gate.py + plugin-write-guard.py deny 메시지에 명시적 복구 가이드 (executor 재실행 / 새 세션 / 유저 보고 — 인프라 inspect/edit 금지) | — |
 | `HARNESS-CHG-20260428-06` | 2026-04-28 | infra | [6.2] executor.py stale lock 자동 정리 visibility — silent unlink → 명시적 메시지 ("직전 실행 PID=X 죽음, 재진행합니다") | — |
 | `HARNESS-CHG-20260428-07` | 2026-04-28 | infra | [7.1] migration audit — `~/.claude/scripts/`, `~/.claude/setup-harness.sh`, `~/.claude/agents/{agent}.md` 잔존 hardcode 5 파일 9 위치 일괄 env-aware 교체 (PR #4 systematic 후속) | `Document-Exception: harness-architecture.md 단일 행 path 정정 — 의사결정 변경 없는 문구 fix 라 rationale 4섹션 불필요. 본 Task-ID 본문 섹션이 동기·범위 명시` |
+| `HARNESS-CHG-20260428-08` | 2026-04-28 | agent | [8.1] validator sub-docs canonical 마커 — plan/code/design/bugfix-validation 출력 형식 `---MARKER:X---` 정형화 + preamble 마커명 정확도 절대 룰 추가 (PLAN_LGTM 변형 차단) | — |
 
 ---
 
@@ -492,6 +493,54 @@ RWHarness commands/harness-review.md:21 → ~/.claude/scripts/harness-review.py 
 - 업스트림 검증: `gh api repos/alruminum/ClaudeCodeAgentPrompt/contents/commands/harness-review.md`
 - `HARNESS-CHG-20260428-04` (PR #4) — 같은 systematic drift 의 executor 영역
 - 후속: `HARNESS-CHG-20260428-08` — validator sub-docs canonical 마커 (jajang 사례의 *별개* 카테고리)
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-08` — 2026-04-28 — validator sub-docs canonical 마커 + preamble 정확도 절대 룰
+
+**Type**: agent (validator sub-docs + preamble)
+
+**Branch**: `harness/validator-canonical-marker`
+
+**Issue**: jajang 사례 — validator 가 `PLAN_LGTM` 변형 emit → `parse_marker → UNKNOWN` → `PLAN_VALIDATION_ESCALATE`. 마이그레이션 무관, 업스트림에도 동일 fragility 존재 (LLM 이 preamble.md 의 LGTM 예시 + plan-validation 의 PLAN_VALIDATION_* 혼동).
+
+**원인 진단**:
+- `parse_marker` 자체는 정상 — `PLAN_LGTM` 이 어느 docs 에도 없으므로 UNKNOWN 반환은 정확
+- agent docs *내부* 일관성 부족:
+  - `preamble.md` 의 마커 예시(`LGTM`, `PASS`, `FAIL`) 는 다른 에이전트 컨텍스트의 예시
+  - `plan-validation.md` 의 출력 형식이 `PLAN_VALIDATION_PASS / PLAN_VALIDATION_FAIL` 평이 단어로 시작
+  - LLM 이 두 스타일을 섞어 `PLAN_LGTM` 같은 변형 emit
+- PR #5 의 architect canonical 마커 패턴을 validator 에 동일 적용해야 함
+
+**[8.1] validator sub-docs canonical (4 파일)**:
+- `agents/validator/plan-validation.md` — 출력 형식 끝에 `---MARKER:PLAN_VALIDATION_PASS---` 정형 마커 + 변형 금지 안내
+- `agents/validator/code-validation.md` — `---MARKER:PASS---` / `FAIL` / `SPEC_MISSING` 정형화
+- `agents/validator/design-validation.md` — `---MARKER:DESIGN_REVIEW_PASS---` / `FAIL` / `ESCALATE` 3가지 모두 canonical 화
+- `agents/validator/bugfix-validation.md` — `---MARKER:BUGFIX_PASS---` / `FAIL` 정형화
+- `agents/validator/ux-validation.md` — *변경 없음* (이미 canonical 형식)
+
+**[8.2] preamble 마커명 정확도 절대 룰**:
+- `agents/preamble.md` § "마커명 정확도 (절대 룰)" 신규
+- 자기 모드의 sub-doc 에 정의된 *정확한 글자만* emit
+- 다른 에이전트 컨텍스트의 예시 차용 금지 명시
+- Bad: `PLAN_LGTM` / `DESIGN_LGTM` / `BUGFIX_LGTM`
+- Good: `PLAN_VALIDATION_PASS` / `DESIGN_REVIEW_PASS` / `BUGFIX_PASS`
+- jajang 실측 사례 출처 명시
+
+**비변경 (의도)**:
+- `parse_marker` 자체 — 정상 동작. 변경 시 false positive 위험
+- `harness/core.py` 의 validator 호출 부분 — 기대 마커는 그대로 (PLAN_VALIDATION_PASS / FAIL)
+
+**검증**:
+- `bash scripts/smoke-test.sh` — 56/56 PASS (회귀 없음)
+- `python3 -m unittest tests.pytest.test_tracker` — 33/33 OK
+
+**Linked**:
+- jajang 사용자 사례 (2026-04-28): validator PLAN_LGTM emit
+- 업스트림 검증: `gh api repos/alruminum/ClaudeCodeAgentPrompt` — 업스트림에도 같은 fragility 존재
+- `HARNESS-CHG-20260428-05` (PR #5) — architect canonical 마커. 본 PR 은 validator 영역 동일 패턴
 
 **Exception**: —
 

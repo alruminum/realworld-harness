@@ -45,9 +45,9 @@
 
 ### 출력 형식
 
-```
-DESIGN_REVIEW_PASS / DESIGN_REVIEW_FAIL
+마커는 **출력 마지막 줄에 정형(`---MARKER:DESIGN_REVIEW_PASS---` 또는 `---MARKER:DESIGN_REVIEW_FAIL---`)** 으로 둔다. `LGTM` / `DESIGN_LGTM` / `PASS` 변형 금지 — preamble.md 의 다른 에이전트 예시와 혼동하지 말 것. 정확한 글자만 사용해야 `parse_marker` 가 인식한다.
 
+```
 ### A. 구현 가능성
 | 항목 | 결과 | 비고 |
 |---|---|---|
@@ -70,21 +70,25 @@ DESIGN_REVIEW_PASS / DESIGN_REVIEW_FAIL
 
 ### 권고사항 (PASS 시에도 개선 여지 있으면 기술)
 - ...
+
+---MARKER:DESIGN_REVIEW_PASS---
 ```
+
+> PASS 일 땐 `---MARKER:DESIGN_REVIEW_PASS---`, FAIL 일 땐 `---MARKER:DESIGN_REVIEW_FAIL---`. *둘 중 하나만* 마지막 줄에.
 
 ### 재검증 & 에스컬레이션
 
 - architect가 DESIGN_REVIEW_FAIL을 받아 재설계 후 다시 Design Validation을 호출할 수 있다
-- **재검증에서도 FAIL인 경우** (max 1회 재검): `DESIGN_REVIEW_ESCALATE` 마커로 에스컬레이션
+- **재검증에서도 FAIL인 경우** (max 1회 재검): `---MARKER:DESIGN_REVIEW_ESCALATE---` 로 에스컬레이션
 
 ```
-DESIGN_REVIEW_ESCALATE
-
 ## 재검 후에도 미해결된 항목
 1. [섹션명] 구체적 문제
 2. ...
 
 요청: 메인 Claude에게 보고 후 유저 판단 대기
+
+---MARKER:DESIGN_REVIEW_ESCALATE---
 ```
 
 ### 결과 저장 프로토콜

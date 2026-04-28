@@ -38,3 +38,16 @@
 3. 마커 이전에 핵심 메타데이터(파일 경로, 1줄 요약 등) 이 있는지
 
 마커 누락 시 하네스가 `parse_marker → UNKNOWN` 으로 받아 `SPEC_GAP_ESCALATE` / `UX_FLOW_ESCALATE` / `*_VALIDATION FAIL` 등 무진단 실패를 만든다. *작업이 정상 완료됐는데도 escalate* 되는 사례의 80% 가 마커 누락에서 비롯된다. (HARNESS-CHG-20260428-05)
+
+### 마커명 정확도 (절대 룰)
+
+자기 모드의 sub-doc 에 정의된 *정확한 글자만* emit. 위 예시(`PASS`, `FAIL`, `LGTM`) 는 *서로 다른 에이전트 컨텍스트* 의 예시일 뿐 — 자기 모드에 그대로 차용 금지.
+
+- ❌ `PLAN_LGTM` (validator PLAN_VALIDATION 모드에서 LGTM 차용 — 실측 사고 jajang 2026-04-28)
+- ❌ `DESIGN_LGTM` (validator DESIGN_VALIDATION 모드 변형)
+- ❌ `BUGFIX_LGTM` 동
+- ✅ `PLAN_VALIDATION_PASS` / `PLAN_VALIDATION_FAIL` (sub-doc 명시)
+- ✅ `DESIGN_REVIEW_PASS` / `DESIGN_REVIEW_FAIL`
+- ✅ `BUGFIX_PASS` / `BUGFIX_FAIL`
+
+자기 모드의 sub-doc 첫 줄 `@OUTPUT { "marker": "..." }` 또는 본문의 "출력 형식" 섹션을 *반드시 확인* 후 emit. 추측·변형 금지. (HARNESS-CHG-20260428-08)
