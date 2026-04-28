@@ -102,7 +102,7 @@ command: |
   PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
   PREFIX_ARGS=()
   [ -n "$PREFIX" ] && PREFIX_ARGS=(--prefix "$PREFIX")
-  python3 ~/.claude/harness/executor.py plan \
+  python3 "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/harness/executor.py" plan \
     --context "[준비도 리포트 전문 + 5차원 수집 내용]" \
     "${PREFIX_ARGS[@]}"
 timeout: 3600000
@@ -120,7 +120,7 @@ plan 루프가 `CLARITY_INSUFFICIENT`를 반환하면 product-planner가 추가 
 4. plan 루프 재실행 (**timeout: 3600000 필수**):
    ```
    command: |
-     python3 ~/.claude/harness/executor.py plan \
+     python3 "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/harness/executor.py" plan \
        --context "[갱신된 리포트 + 추가 답변 + PRD 초안: prd-draft.md]" \
        "${PREFIX_ARGS[@]}"
    timeout: 3600000
@@ -161,7 +161,7 @@ plan 루프가 `PLAN_REVIEW_CHANGES_REQUESTED`를 리턴하면 plan-reviewer(기
 context에는 reviewer 리포트의 "수정 요청 항목" 섹션을 포함:
 ```
 command: |
-  python3 ~/.claude/harness/executor.py plan \
+  python3 "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/harness/executor.py" plan \
     --context "[plan-reviewer 리포트 수정 요청 항목 전문 + 이전 준비도 리포트]" \
     "${PREFIX_ARGS[@]}"
 timeout: 3600000
@@ -260,7 +260,7 @@ architect(SD) SYSTEM_DESIGN_READY + designer DESIGN_HANDOFF 완료 후:
 디자인 승인 후 구현 루프 진입. 상세: [orchestration/impl.md](../orchestration/impl.md)
 
 ```
-python3 ~/.claude/harness/executor.py impl \
+python3 "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/harness/executor.py" impl \
   --impl <impl_path> \
   --issue <N> \
   "${PREFIX_ARGS[@]}"

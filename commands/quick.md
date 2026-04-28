@@ -62,7 +62,7 @@ Bash 도구로 직접 실행. `timeout: 1800000` (30분) 필수.
 PREFIX=$(python3 -c "import json; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
 PREFIX_ARGS=()
 [ -n "$PREFIX" ] && PREFIX_ARGS=(--prefix "$PREFIX")
-python3 ~/.claude/harness/executor.py impl \
+python3 "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/harness/executor.py" impl \
   --issue <QA가 생성한 이슈 번호> \
   --depth simple \
   "${PREFIX_ARGS[@]}"

@@ -98,8 +98,8 @@ def main():
     # 3. 하네스 내부 에이전트는 harness/executor.py 경유 필수
     if agent in HARNESS_ONLY_AGENTS and not flag(FLAGS.HARNESS_ACTIVE):
         cmds = {
-            "engineer": "python3 ~/.claude/harness/executor.py impl --impl <path> --issue <N>",
-            "architect": "python3 ~/.claude/harness/executor.py impl|plan ...",
+            "engineer": 'python3 "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/harness/executor.py" impl --impl <path> --issue <REF>',
+            "architect": 'python3 "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/harness/executor.py" impl|plan ...',
         }
         deny(f"❌ {agent}는 harness/executor.py를 통해서만 호출 가능. "
              f"{get_flags_dir()}/{PREFIX}_{FLAGS.HARNESS_ACTIVE} 없음. "
@@ -114,7 +114,7 @@ def main():
             if mode in ARCHITECT_HARNESS_ONLY_MODES:
                 deny(f"❌ architect {mode}는 harness/executor.py 경유만 허용됩니다. "
                      f"메인 Claude 직접 호출 금지. "
-                     f"→ python3 ~/.claude/harness/executor.py plan|impl --issue <N> ... "
+                     f'→ python3 "${{CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}}/harness/executor.py" plan|impl --issue <REF> ... '
                      f"(plan_loop/impl_loop가 내부에서 자동 호출)")
         elif agent == "validator":
             mode = detect_validator_mode(prompt)
