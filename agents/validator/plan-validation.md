@@ -28,6 +28,10 @@
 | 핵심 로직 | 의사코드 또는 구현 가능한 스니펫이 존재하는가 (빈 섹션이면 FAIL) |
 | 에러 처리 방식 | throw/반환/상태 업데이트 중 어떤 전략인지 명시되어 있는가 |
 | 의존 모듈 실재 | 계획이 참조하는 모듈/함수가 실제 소스에 존재하는가 |
+| **분기 enumeration** | **`## 분기 enumeration` 섹션이 있고, 데이터 행이 2행 이상이거나 `single-branch` 라벨이 명시되어 있는가** ([14.2] hole 회귀 차단) |
+
+> "분기 enumeration" 행이 0개거나 단일 분기인데 single-branch 라벨이 없으면 즉시 FAIL.
+> light-plan 산출물 (`docs/impl/N-*.md` 또는 `docs/bugfix/#N-*.md`) 에만 적용 — module-plan 은 §"핵심 로직" 의사코드가 동등 역할.
 
 #### B. 정합성 — 하나라도 불일치 시 FAIL
 
@@ -70,6 +74,7 @@
 | 항목 | 결과 | 비고 |
 |---|---|---|
 | 생성/수정 파일 목록 | PASS/FAIL | ... |
+| 분기 enumeration | PASS/FAIL | (행 수) |
 ...
 
 ### B. 정합성
