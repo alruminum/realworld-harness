@@ -64,6 +64,30 @@
 | `HARNESS-CHG-20260428-14.3` | 2026-04-28 | infra | TDD 순서 강제 — impl_loop.py:928 `_tdd_active` 조건에서 `bool(config.test_command)` 의존성 제거. 1209 의 옛 폴백(engineer→test-engineer, OLD 순서) elif 블록 제거. test_command 부재가 TDD 자체를 끄지 않도록 — 테스트 작성은 회귀 방어 + impl 명세 검증 목적도 있고, RED/GREEN 실측 게이트만 test_command 가드 유지. jajang 류 std/deep 프로젝트에서 engineer 가 test-engineer 보다 먼저 실행되던 룰 위반 차단. | — |
 | `HARNESS-CHG-20260428-14.4` | 2026-04-28 | docs  | pr-reviewer.md 에 에이전트 스코프 매트릭스 섹션 추가 — `hooks/agent-boundary.py` `ALLOW_MATRIX` 명시 + 스코프 밖 파일(docs/bugfix/**, docs/impl/**, package.json 등) 발견 시 NICE TO HAVE 강등 + 라우팅 권고 명시. MUST FIX 는 engineer/test-engineer 스코프 안 파일에만 발행. pr-reviewer 가 boundary 모르고 모든 영역에 MUST FIX 발행 → engineer boundary 차단 → no_changes 사이클 차단. | — |
 | `HARNESS-CHG-20260428-14.5` | 2026-04-28 | infra | impl_loop.py automated_checks 분기에 `no_changes` 별도 fail_type 추가 — `check_err.startswith("no_changes:")` 시 즉시 `IMPLEMENTATION_ESCALATE` (run_simple/_run_std_deep 양쪽). 옛 동작: 모든 autocheck 실패가 `autocheck_fail` 로 단일 분류 → circuit breaker 가 2회 누적 후에야 fire → boundary block 시 attempt 2회 무위 ($1.5+) 소진. 새 동작: no_changes 1회만에 escalate (boundary block / missing impl / 컨텍스트 손실 등 retry 무의미한 카테고리). | — |
+| `HARNESS-CHG-20260428-19` | 2026-04-28 | infra | [19.1] `current_session_id()` 글로벌 폴백 + 4중 가드 — RWHarness dogfooding 환경(화이트리스트 미등록 → 프로젝트 pointer 미생성)에서 live.json.agent silent skip 버그 차단. `~/.claude/harness-state/.session-id` 폴백 + 파일존재/sid형식/자기참조/6h신선도 가드. 회귀 0 (env > project > global 우선순위 보존, 폴백 실패 시 빈 문자열). 단위 테스트 9TC 신규. py_compile OK / pytest 9/9 / 회귀 101/101 / smoke 70/70 / dogfooding 실측 c86ce041-... 반환 확인. | — |
+
+---
+
+## `HARNESS-CHG-20260428-19` — 2026-04-28 — `current_session_id()` 글로벌 폴백 (dogfooding silent malfunction 차단)
+
+**Type**: infra
+
+**Files**:
+- `hooks/session_state.py` — `current_session_id()` 3단계 글로벌 폴백 + `_read_global_session_pointer_safely()` 헬퍼 + `_GLOBAL_FALLBACK_FRESHNESS_SEC` 상수
+- `tests/pytest/test_session_state_fallback.py` — 신규 9TC
+- `orchestration/changelog.md` — 본 항목
+
+**변경 요약**:
+RWHarness dogfooding 환경(화이트리스트 미등록 → SessionStart 훅 조기 종료 → 프로젝트 `.session-id` 미생성)에서 `current_session_id()` 가 빈 문자열을 반환해 `core.py:980` `update_live(sid, agent=…)` 가 silent skip 되는 버그 차단.
+
+`~/.claude/harness-state/.session-id` 를 3번째 폴백으로 추가. 4중 가드(파일존재/sid형식/자기참조/6h신선도) 모두 통과 시에만 채택. 가드 실패 시 빈 문자열 — v1 동작 유지(회귀 0).
+
+**검증**:
+- `py_compile hooks/*.py harness/*.py`: ALL OK
+- `pytest tests/pytest/test_session_state_fallback.py`: 9/9 PASS
+- `pytest tests/pytest/test_guards.py`: 101/101 PASS (회귀 0)
+- `bash scripts/smoke-test.sh`: 70/70 PASS
+- dogfooding 실측: `current_session_id()` → `'c86ce041-e4d3-4d05-83d8-d9717e7029dc'` (빈 문자열 → 실제 sid)
 
 ---
 
