@@ -165,6 +165,22 @@ def main():
     except Exception:
         pass
 
+    # ── 마켓플레이스 클론 auto-pull — bash fallback path 가 stale 되는 hole 차단 ──
+    # bash 의 `${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/marketplaces/realworld-harness}/...`
+    # 폴백 진입 시 옛 core.py 가 실행되어 `import session_state` 실패 + 후속 fix 무력화.
+    # 매 세션 시작에 ff-only pull 로 origin/main 동기화. 실패 silent (오프라인/충돌/dirty).
+    try:
+        _market = os.path.expanduser(
+            "~/.claude/plugins/marketplaces/realworld-harness"
+        )
+        if os.path.isdir(os.path.join(_market, ".git")):
+            subprocess.run(
+                ["git", "-C", _market, "pull", "--ff-only", "--quiet"],
+                capture_output=True, timeout=10,
+            )
+    except Exception:
+        pass
+
     # ── #36: stale worktree sweep — 외부 머지된 worktree 자동 정리 ──────
     # 사용자 수동 `gh pr merge` 로 머지된 케이스에서 WorktreeManager.remove() 가
     # 호출 안 되어 worktree 가 누적되는 문제 해결. unpushed commit 있으면 skip.
