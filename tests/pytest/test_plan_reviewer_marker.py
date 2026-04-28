@@ -75,7 +75,9 @@ class TestREQ004MarkerAliasInfrastructure:
         from harness import core as _core
         assert _core.MARKER_ALIASES.get("PLAN_REVIEW_REJECT") == "PLAN_REVIEW_CHANGES_REQUESTED"
 
-    def test_bare_lgtm_intentionally_not_aliased(self):
+    def test_bare_lgtm_aliased_to_plan_review_pass(self):
+        # jajang 2026-04-29 실측 — plan-reviewer 가 bare LGTM emit 사고 후 alias 추가.
+        # parse_marker 1차(canonical) 가 alias 보다 우선이라 pr-reviewer 호출에선
+        # 1차 매치, plan-reviewer 호출에선 alias 흡수 — 양쪽 안전.
         from harness import core as _core
-        # bare LGTM 은 pr-reviewer 정식 마커이므로 의도적 미alias
-        assert "LGTM" not in _core.MARKER_ALIASES or _core.MARKER_ALIASES.get("LGTM") != "PLAN_REVIEW_PASS"
+        assert _core.MARKER_ALIASES.get("LGTM") == "PLAN_REVIEW_PASS"

@@ -336,14 +336,22 @@ class ParseMarkerAliasTests(unittest.TestCase):
                                    "PLAN_REVIEW_PASS|PLAN_REVIEW_CHANGES_REQUESTED")
         self.assertEqual(r, "PLAN_REVIEW_CHANGES_REQUESTED")
 
-    def test_bare_lgtm_NOT_aliased_in_plan_review_context(self):
-        # bare LGTM 은 pr-reviewer 정식 마커 — plan-reviewer 컨텍스트에서 alias 안 됨
-        # (의도적 충돌 회피). agent.md 강화로 1차 방어, 본 alias map 은 PLAN_REVIEW_*
-        # 변형만 흡수.
+    def test_bare_lgtm_aliased_in_plan_review_context(self):
+        # jajang 2026-04-29 실측: plan-reviewer 가 bare ---MARKER:LGTM--- emit
+        # parse_marker 1차(canonical) 가 alias 보다 우선이라 pr-reviewer 호출
+        # (expected_set 에 LGTM) 에선 1차 매치 → alias 우회. plan-reviewer 호출
+        # (expected_set 에 LGTM 없음) 에선 1차/2차 fail → alias → PLAN_REVIEW_PASS.
         self._write("reviewer output\n---MARKER:LGTM---\n")
         r = self.core.parse_marker(self.tmp.name,
                                    "PLAN_REVIEW_PASS|PLAN_REVIEW_CHANGES_REQUESTED")
-        self.assertEqual(r, "UNKNOWN")  # 의도된 동작
+        self.assertEqual(r, "PLAN_REVIEW_PASS")
+
+    def test_bare_lgtm_canonical_in_pr_reviewer_context(self):
+        # pr-reviewer 호출은 expected_set 에 LGTM 포함 → 1차 canonical 매치
+        # → alias 까지 안 가고 LGTM 그대로 반환 (충돌 없음)
+        self._write("pr-reviewer output\n---MARKER:LGTM---\n")
+        r = self.core.parse_marker(self.tmp.name, "LGTM|CHANGES_REQUESTED")
+        self.assertEqual(r, "LGTM")  # canonical 1차 매치, alias 우회
 
 
 if __name__ == "__main__":
