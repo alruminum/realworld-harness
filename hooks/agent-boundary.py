@@ -215,7 +215,13 @@ def main():
         sys.exit(0)
 
     # ── 이하 Write/Edit 전용: 허용 경로 매트릭스 확인 ──
-    allowed_patterns = ALLOW_MATRIX.get(active_agent, [])
+    # V2: engineer 한정 동적 scope 로드 (agent-boundary §1.1).
+    # v1 fallback: HARNESS_GUARD_V2_AGENT_BOUNDARY 미설정 시 _STATIC_ENGINEER_SCOPE 반환.
+    if active_agent == "engineer":
+        from harness_common import _load_engineer_scope  # 신규 헬퍼 (§1.8)
+        allowed_patterns = _load_engineer_scope()
+    else:
+        allowed_patterns = ALLOW_MATRIX.get(active_agent, [])
 
     # ReadOnly 에이전트 (빈 리스트) → 모든 Write/Edit deny
     if not allowed_patterns:
@@ -243,8 +249,24 @@ def main():
     except Exception:
         pass
     allowed_desc = ", ".join(allowed_patterns)
-    deny(f"❌ [hooks/agent-boundary.py] {active_agent}는 {os.path.basename(fp)} 수정 불가. "
-         f"허용 경로: {allowed_desc}")
+    # V2 deny enrichment — §1.1 / W4 cross-guard cascade 진단
+    if os.environ.get("HARNESS_GUARD_V2_AGENT_BOUNDARY") == "1":
+        try:
+            from harness_common import _load_engineer_scope as _les
+            _cfg_loaded = (
+                os.environ.get("HARNESS_GUARD_V2_AGENT_BOUNDARY") == "1"
+                or os.environ.get("HARNESS_GUARD_V2_ALL") == "1"
+            )
+        except Exception:
+            _cfg_loaded = False
+        scope_source = "harness.config.json" if _cfg_loaded else "static fallback"
+        live_health = "OK" if active_agent else "MISSING (cross-guard cascade?)"
+        deny(f"❌ [hooks/agent-boundary.py] {active_agent}는 {os.path.basename(fp)} 수정 불가. "
+             f"허용 경로: {allowed_desc}\n"
+             f"진단: live.json={live_health} | engineer_scope source: {scope_source} (V2)")
+    else:
+        deny(f"❌ [hooks/agent-boundary.py] {active_agent}는 {os.path.basename(fp)} 수정 불가. "
+             f"허용 경로: {allowed_desc}")
 
 if __name__ == "__main__":
     main()

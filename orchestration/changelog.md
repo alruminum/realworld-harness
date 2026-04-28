@@ -57,6 +57,7 @@
 | `HARNESS-CHG-20260428-11` | 2026-04-28 | infra | [11.1] `--force-retry` 확장 — escalate_history 도 청소 (false failure 누적 후 retry 시 manual JSON 편집 불필요) + auto_spec_gap 메시지에 복구 안내 추가 | — |
 | `HARNESS-CHG-20260428-12` | 2026-04-28 | infra | [12.1] PLUGIN_ROOT `__file__` self-detect — env 미설정 시 `~/.claude` 폴백(post-migration 무효) 대신 `${plugin}/harness/core.py` 위치에서 root 추론. session_state import 안정화 (jajang 사례 — bash `${VAR:-...}` path 확장은 env export 아님) | — |
 | `HARNESS-CHG-20260428-13.1` | 2026-04-28 | docs | Phase 2 Iter 1 (W1+W3) — 가드 카탈로그 7개 (5개 W2 포함 / 2개 제외: issue-gate, plugin-write-guard) + spec §0 [invariant-shift] PR 토큰 정식 도입 + §3 I-1/I-2/I-7/I-9 보호 대상↔모델 분리 + architecture §5.6/§5.7 Layered Defense + §5.8 Staged Rollout + rationale 4섹션 + 5번째 위험 패턴 (Cross-guard Silent Dependency Chain) | — |
+| `HARNESS-CHG-20260428-13.2` | 2026-04-28 | infra | Phase 2 Iter 2 (W2+W4) — 5 가드 + 1 ralph fallback + Layered Defense 보강. config.py engineer_scope 필드 + tracker.MUTATING_SUBCOMMANDS SSOT + harness_common 4개 헬퍼(_load_engineer_scope/auto_gc_stale_flag/_verify_live_json_writable/_STATIC_ENGINEER_SCOPE) + session_state.update_live 쓰기 실패 stderr 표준화 + executor.py round-trip canary(always-on) + HARNESS_ACTIVE flag heartbeat + agent-boundary/commit-gate/agent-gate/skill-gate/skill-stop-protect V2 분기 + ralph-session-stop 3-layer fallback(HARNESS_GUARD_V2_RALPH_FALLBACK, default off). 모든 V2 env unset 시 v1 동작 100% 회귀 0. py_compile + smoke-test 57/57 PASS. | — |
 
 ---
 

@@ -53,13 +53,26 @@ def _read_stdin() -> dict:
 
 
 def _log_event(event: dict) -> None:
-    """진단 로그 — .claude/harness-state/.logs/skill-protect.jsonl"""
+    """진단 로그 — .claude/harness-state/.logs/skill-protect.jsonl
+    §1.5 W2: guard/result 키 표준화 (backward-compat — setdefault으로 기존 키 보존).
+    V2 분기 없음 — key 추가는 backward-compat (기존 reader도 새 key 무시 가능).
+    """
     try:
         root = ss.state_root()
         log_dir = root / ".logs"
         log_dir.mkdir(exist_ok=True)
         log_path = log_dir / "skill-protect.jsonl"
-        event["ts"] = int(time.time())
+        # v2 표준 schema 강제 — 누락된 key 자동 채움 (backward-compat)
+        event.setdefault("ts", int(time.time()))
+        event.setdefault("guard", "skill-stop-protect")
+        # event 안에 result 가 없으면 event 종류로 유도 (kill_clear/auto_release/block_stop)
+        if "result" not in event:
+            evt = event.get("event", "")
+            event["result"] = {
+                "kill_clear": "released",
+                "auto_release": "released",
+                "block_stop": "blocked",
+            }.get(evt, "unknown")
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(event, ensure_ascii=False) + "\n")
     except OSError:
