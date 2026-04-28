@@ -507,7 +507,8 @@ def run_simple(
                     pass
                 save_impl_meta(attempt_dir, attempt, "FAIL", depth, fail_type,
                                "engineer 변경 없음 — boundary block / missing impl / 컨텍스트 손실 의심. 재시도 무의미.")
-                rollback_attempt(attempt, run_logger)
+                rollback_attempt(attempt, run_logger,
+                                 hard_reset=True, feature_branch=feature_branch, cwd=work_cwd)
                 state_dir.flag_rm(Flag.PLAN_VALIDATION_PASSED)
                 os.environ["HARNESS_RESULT"] = "IMPLEMENTATION_ESCALATE"
                 hlog_fn("=== no_changes → IMPLEMENTATION_ESCALATE (1회만, retry 스킵) ===")
@@ -1223,7 +1224,8 @@ def _run_std_deep(
                     pass
                 save_impl_meta(attempt_dir, attempt, "FAIL", depth, fail_type,
                                "engineer 변경 없음 — boundary block / missing impl / 컨텍스트 손실 의심. 재시도 무의미.")
-                rollback_attempt(attempt, run_logger)
+                rollback_attempt(attempt, run_logger,
+                                 hard_reset=True, feature_branch=feature_branch, cwd=work_cwd)
                 state_dir.flag_rm(Flag.PLAN_VALIDATION_PASSED)
                 os.environ["HARNESS_RESULT"] = "IMPLEMENTATION_ESCALATE"
                 hlog_fn("=== no_changes → IMPLEMENTATION_ESCALATE (1회만, retry 스킵) ===")

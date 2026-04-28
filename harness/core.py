@@ -1330,6 +1330,12 @@ def find_main_repo_root(start_path: Optional[Path] = None) -> Path:
     return cwd
 
 
+# plan 파일 prefix SSOT — worktree 보호 경계와 동일 (helpers.py 가 import 해서 분류에 사용).
+# G1 (α): 클래스 속성을 제거하고 모듈 레벨에 신설. 외부 WorktreeManager._PLAN_PREFIXES
+# 참조 0개 (grep 확인) 이므로 클래스 속성 제거 안전.
+_PLAN_PREFIXES = ("docs/bugfix/", "docs/impl/", "docs/milestones/")
+
+
 class WorktreeManager:
     """이슈별 git worktree 라이프사이클 관리."""
 
@@ -1372,7 +1378,9 @@ class WorktreeManager:
     # (qa→architect LIGHT_PLAN→executor 체이닝). git worktree add 는 tracked HEAD
     # 만 가져오므로 미커밋 plan 파일이 누락 → engineer attempt 0 no_changes.
     # 안전 패턴: plan 디렉토리만. src/ 등은 worktree 경계 보호 위해 제외.
-    _PLAN_PREFIXES = ("docs/bugfix/", "docs/impl/", "docs/milestones/")
+    # NOTE: _PLAN_PREFIXES 는 모듈 레벨 상수 (클래스 정의 직전) 로 승격됨.
+    # helpers.py 가 `from .core import _PLAN_PREFIXES` 로 직접 import 가능 (SSOT).
+    # 아래 클래스 속성 정의는 제거 — 외부에서 WorktreeManager._PLAN_PREFIXES 참조 0개.
 
     def _copy_untracked_plan_files(self, wt_path: Path, reused: bool = False) -> None:
         """worktree 진입 시 main repo 의 untracked plan 파일을 worktree 로 복사.
@@ -1387,7 +1395,7 @@ class WorktreeManager:
         skipped = 0
         for line in r.stdout.splitlines():
             rel = line.strip()
-            if not rel or not rel.startswith(self._PLAN_PREFIXES):
+            if not rel or not rel.startswith(_PLAN_PREFIXES):
                 continue
             src = self.project_root / rel
             if not src.is_file():
