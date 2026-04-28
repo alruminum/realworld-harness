@@ -61,6 +61,30 @@
 | `HARNESS-CHG-20260428-13.3` | 2026-04-28 | test  | Phase 2 Iter 3 (W5) — 회귀 테스트 + jajang fixtures + smoke-test 시나리오. `tests/pytest/test_guards.py` 신규 (101 케이스, 18 REQ 전수 / V2 on·off 양쪽 검증) + `tests/pytest/conftest.py` 신규 + 4 fixture 디렉토리(jajang_monorepo / llm_marker_variants / jajang_4categories / cross_guard_silent_dependency A·B) + `scripts/smoke-test.sh` 시나리오 10~14 추가(monorepo / env unset / LLM 변형 / cross-flag / silent dependency 가시화). pytest 101/101 + smoke-test 70/70 PASS. 코드 결함 0건(test 기술만 정정). 5번째 위험(Cross-guard Silent Dependency Chain) 본 ralph-loop Iter 2→3 transition 에서 production 재발 — 영구 fix가 default off라 v1 동작 그대로, 시나리오 A/B 자동 회귀 테스트화. invariant 변경 없음 → `[invariant-shift]` 토큰 미사용. | — |
 | `HARNESS-CHG-20260428-14.1` | 2026-04-28 | infra | MARKER_ALIASES 12개 변형 추가 — PLAN_VALIDATION(PLAN_VALIDATED/PLAN_VERIFIED/PLAN_PASS/PLAN_INVALID) + LIGHT_PLAN_READY(LIGHT_PLAN_DONE/LIGHT_PLAN_COMPLETE/LIGHT_PLAN_WRITTEN/BUGFIX_PLAN_READY) + READY_FOR_IMPL(MODULE_PLAN_READY/MODULE_PLAN_DONE/IMPL_PLAN_READY/IMPL_READY/PLAN_DONE/PLAN_WRITTEN/PLAN_COMPLETE). validator/architect 가 canonical 대신 자유 텍스트 변형 emit 시 SPEC_GAP_ESCALATE / PLAN_VALIDATION_ESCALATE 로 attempt 무위 소진되던 사례 차단. defense in depth 2nd layer 두꺼워짐. | — |
 | `HARNESS-CHG-20260428-14.2` | 2026-04-28 | infra | WorktreeManager.create_or_reuse 에 untracked plan 파일 자동 복사 추가 — `git worktree add` 직후 main repo `ls-files --others --exclude-standard` 결과 중 `docs/bugfix/`, `docs/impl/`, `docs/milestones/` prefix 파일을 worktree 같은 상대경로로 cp. architect 가 main repo 에 LIGHT_PLAN 작성 후 commit 전 worktree 진입하면 engineer 가 'impl 파일 없음' no_changes 로 attempt 0 무위 소진되던 사고 차단. 안전 패턴: plan 디렉토리만 — src/ 등은 worktree 경계 보호 위해 제외. | — |
+| `HARNESS-CHG-20260428-19` | 2026-04-28 | infra | [19.1] `current_session_id()` 글로벌 폴백 + 4중 가드 — RWHarness dogfooding 환경(화이트리스트 미등록 → 프로젝트 pointer 미생성)에서 live.json.agent silent skip 버그 차단. `~/.claude/harness-state/.session-id` 폴백 + 파일존재/sid형식/자기참조/6h신선도 가드. 회귀 0 (env > project > global 우선순위 보존, 폴백 실패 시 빈 문자열). 단위 테스트 9TC 신규. py_compile OK / pytest 9/9 / 회귀 101/101 / smoke 70/70 / dogfooding 실측 c86ce041-... 반환 확인. | — |
+
+---
+
+## `HARNESS-CHG-20260428-19` — 2026-04-28 — `current_session_id()` 글로벌 폴백 (dogfooding silent malfunction 차단)
+
+**Type**: infra
+
+**Files**:
+- `hooks/session_state.py` — `current_session_id()` 3단계 글로벌 폴백 + `_read_global_session_pointer_safely()` 헬퍼 + `_GLOBAL_FALLBACK_FRESHNESS_SEC` 상수
+- `tests/pytest/test_session_state_fallback.py` — 신규 9TC
+- `orchestration/changelog.md` — 본 항목
+
+**변경 요약**:
+RWHarness dogfooding 환경(화이트리스트 미등록 → SessionStart 훅 조기 종료 → 프로젝트 `.session-id` 미생성)에서 `current_session_id()` 가 빈 문자열을 반환해 `core.py:980` `update_live(sid, agent=…)` 가 silent skip 되는 버그 차단.
+
+`~/.claude/harness-state/.session-id` 를 3번째 폴백으로 추가. 4중 가드(파일존재/sid형식/자기참조/6h신선도) 모두 통과 시에만 채택. 가드 실패 시 빈 문자열 — v1 동작 유지(회귀 0).
+
+**검증**:
+- `py_compile hooks/*.py harness/*.py`: ALL OK
+- `pytest tests/pytest/test_session_state_fallback.py`: 9/9 PASS
+- `pytest tests/pytest/test_guards.py`: 101/101 PASS (회귀 0)
+- `bash scripts/smoke-test.sh`: 70/70 PASS
+- dogfooding 실측: `current_session_id()` → `'c86ce041-e4d3-4d05-83d8-d9717e7029dc'` (빈 문자열 → 실제 sid)
 
 ---
 
