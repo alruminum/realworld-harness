@@ -56,6 +56,7 @@
 | `HARNESS-CHG-20260428-10` | 2026-04-28 | infra | [10.1] migration audit cleanup — notify.py:19 CLI 예시 + plugin-write-guard:83 + settings-watcher:42,54 메시지 + README §C 신규 사용자 혼동 차단 (4건 일괄, MCP graceful 별도 검토) | — |
 | `HARNESS-CHG-20260428-11` | 2026-04-28 | infra | [11.1] `--force-retry` 확장 — escalate_history 도 청소 (false failure 누적 후 retry 시 manual JSON 편집 불필요) + auto_spec_gap 메시지에 복구 안내 추가 | — |
 | `HARNESS-CHG-20260428-12` | 2026-04-28 | infra | [12.1] PLUGIN_ROOT `__file__` self-detect — env 미설정 시 `~/.claude` 폴백(post-migration 무효) 대신 `${plugin}/harness/core.py` 위치에서 root 추론. session_state import 안정화 (jajang 사례 — bash `${VAR:-...}` path 확장은 env export 아님) | — |
+| `HARNESS-CHG-20260428-13.1` | 2026-04-28 | docs | Phase 2 Iter 1 (W1+W3) — 가드 카탈로그 7개 (5개 W2 포함 / 2개 제외: issue-gate, plugin-write-guard) + spec §0 [invariant-shift] PR 토큰 정식 도입 + §3 I-1/I-2/I-7/I-9 보호 대상↔모델 분리 + architecture §5.6/§5.7 Layered Defense + §5.8 Staged Rollout + rationale 4섹션 + 5번째 위험 패턴 (Cross-guard Silent Dependency Chain) | — |
 
 ---
 
@@ -725,6 +726,85 @@ def _resolve_plugin_root() -> Path:
 **Linked**:
 - jajang 사례 (2026-04-28) — agent_call session_state 로드 실패
 - migration audit (PR #7) 의 *코드 내부* path 후속 — audit 가 user-facing path 만 잡고 코드 내부 PLUGIN_ROOT 폴백은 놓쳤었음
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-13.1` — 2026-04-28 — 가드 카탈로그 + spec/architecture invariant-shift (W1+W3)
+
+**Type**: docs (guard-catalog + harness-spec §0/§3 + harness-architecture §5.6/§5.7/§5.8 + rationale.md)
+
+**Branch**: `harness/guard-realignment-iter1`
+
+**Issue**: #13 — Phase 2 Guard Model Realignment. W1 (catalog 게이트) + W3 (spec/architecture 정렬) Iter 1 범위. W2 (5 가드 코드 변경) / W4 (deny 메시지 enrichment + executor round-trip) / W5 (회귀 테스트 + jajang fixtures) 는 후속 Iter 2/3.
+
+**범위**: Iter 1 = 분석·문서·계획. 코드 변경 0건. 후속 Iter 2 (W2+W4) 와 Iter 3 (W5) 는 별도 PR.
+
+**[13.1.W1] 가드 카탈로그 작성** — `docs/guard-catalog.md` (신규):
+- 활성 7개 PreToolUse 가드 전수 조사 — 보호 대상(보안 / 책임 분리 / 일관성 / 추적성 / 워크플로우 강제), 현재 모델, 환경 가정, fail mode, 재설계 권장을 가드별 1페이지로 정리.
+- W2 코드 변경 포함 5개 식별:
+  - `agent-boundary.py` (HIGH) — scope strict 진앙. ALLOW_MATRIX["engineer"] 동적화 (`engineer_scope` config) + Read 경계는 보안 모델 유지.
+  - `commit-gate.py` (HIGH) — Gate 1/3/4/5 책임 비대 + staged regex drift. agent-boundary 와 같은 source 에서 staged 패턴 파생 + tracker `MUTATING_SUBCOMMANDS` 위임.
+  - `agent-gate.py` (HIGH) — stale `HARNESS_ACTIVE` flag silent-pass + 추적 ID 단일 regex. flag age check + GC + `tracker.parse_ref()` 위임.
+  - `skill-gate.py` (MEDIUM) — `live.json.skill` 쓰기 silent 실패 = downstream cascade 진앙. 쓰기 실패 stderr 경고 + 진단 집계 (passive recorder 본질 유지).
+  - `skill-stop-protect.py` (MEDIUM, 부분 포함) — TTL/auto_release/max_reinforcements 모델이 가장 robust. **이 모델을 다른 가드에 일반화** 하는 reference. 자체는 진단 로그 표준만.
+- W2 제외 2개 + 제외 사유:
+  - `issue-gate.py` — 30 LOC 단순. 단일 fail mode (false-block, 보안적 정답). W4 진단 가시성만 흡수, 모델 변경 없음.
+  - `plugin-write-guard.py` — 보안 가드 (allowlist + ENV 우회 = 정답 모델). 모노레포 가정 영향 없음. W4 진단 가시성만 흡수, 모델 변경 없음.
+
+**[13.1.X] 위험 패턴 5번째** — guard-catalog.md §3 (Cross-guard Silent Dependency Chain):
+- 4 카테고리(path hardcode / marker fragility / state persistence stuck / scope strict) 외 qa 진단에서 추가 발견.
+- 시나리오 A: `skill-gate.py` 의 `live.json.skill` 쓰기 silent 실패 → `agent-boundary.py` 가 활성 스킬 못 읽음 → 메인 Claude 의 정당한 작업 false-block + 사용자에게 진단 부재.
+- 시나리오 B: `agent-gate.py` 의 `live.json.agent` 쓰기 실패 → `issue-gate.py`/`commit-gate.py` Gate 1 이 ISSUE_CREATORS 활성도 차단.
+- 해결: blocking layer 결정은 1차 검증 단독 + informational layer 로 silent cascade 가시화 (W4 항목 4개 — stderr 경고 표준화 / `harness-state/.logs/<guard>.jsonl` 집계 / executor round-trip canary / deny 메시지 enrichment).
+
+**[13.1.W3] spec/architecture invariant-shift**:
+
+`docs/harness-spec.md`:
+- **§0 `[invariant-shift]` PR title 토큰 정식 룰** 신규 — §0 약화뿐 아니라 §3 invariant(I-1 ~ I-N) 의 *표현(wording) / 모델(model) / 효과 범위(scope)* 변경 PR 모두 토큰 의무화. 사용 기준(표현·모델·범위 변경) / 미사용 기준(typo·진단 로그·내부 정리) / 식별자 동반 의무(commit body `HARNESS-CHG-YYYYMMDD-NN`) 명시. pr-reviewer 가 누락 PR 자동 reject.
+- **§3 I-1** — 보호 대상(책임 분리: 메인 단독 수정 차단) ↔ 현재 모델(`agent-boundary.py` ALLOW_MATRIX 동적 화이트리스트 — `engineer_scope` config + default 7 패턴 fallback) 분리. 모델 진화 시 효과 동등성 입증 의무. 보안 가드 예외(Read 경계 + plugin-write-guard 는 allowlist 모델 자체가 invariant) 명시.
+- **§3 I-2** — 보호 대상(추적성: 모든 구현이 추적 ID 와 결합) ↔ 모델(`tracker.parse_ref()` 위임 — `#N` / `LOCAL-N` 형식 흡수) 분리. 향후 백엔드 추가 시 invariant 표현 유지, tracker 가 변형 흡수.
+- **§3 I-7** — 활성 에이전트 판정 SSOT 는 `live.json.agent`. `HARNESS_ACTIVE` flag (executor 점유 신호) 의 age check + GC 는 본 invariant 와 무관 — 다른 상태 객체 + informational layer 폴백(`HARNESS_AGENT_NAME` env stderr 경고)도 진단용으로 deny 결정 영향 없음 명확화.
+- **§3 I-9** — 보호 대상(책임 분리 + 추적성: 인프라 변경 메인 단독 차단) ↔ 모델(`HARNESS_INFRA_PATTERNS` + `is_infra_project()` 신호 1~3 OR + 위임 룰) 분리.
+
+`docs/harness-architecture.md`:
+- **§5.6 가드 정책 일람** 신규 — 7개 가드별 보호 대상 / Phase 2 W2 변경 범위 / catalog 출처 한 줄 요약 표. 정본은 `docs/guard-catalog.md`, 본 섹션은 architecture 차원 매핑.
+- **§5.7 Defense-in-depth ↔ Determinism 정책 (Layered Defense)** 신규 — 두 레이어 분리:
+  - **Blocking layer (결정론)**: invariant 위반 시 즉시 deny. 동일 입력 → 동일 결과 보장. 8개 항목(agent-boundary / plugin-write-guard / commit-gate Gate 1·5 / agent-gate HARNESS_ONLY·추적 ID / issue-gate / skill-stop-protect).
+  - **Informational layer (진단)**: fail 시 stderr 경고 + diag log, **차단 결정 권한 없음**. 5개 항목(skill-gate 쓰기 실패 / skill-stop-protect 표준 로그 / agent-boundary live.json 폴백 / executor round-trip canary / deny 메시지 enrichment).
+  - 결정론 = blocking layer 의 책임. silent dependency cascade 는 informational layer 가 가시화하되 invariant 완화하지 않음. 위반 시 §0 워크플로우 강제 위반 → `[invariant-shift]` 토큰 + rationale Alternatives 필수.
+- **§5.8 Staged Rollout — `HARNESS_GUARD_V2_*` 환경변수** 신규 — 가드 모델 변경(Phase 2 W2)을 env var 로 점진 활성화. 미설정 시 v1 fallback (회귀 0):
+  - 가드별 7개: `HARNESS_GUARD_V2_{AGENT_BOUNDARY,COMMIT_GATE,AGENT_GATE,SKILL_GATE,SKILL_STOP_PROTECT,ISSUE_GATE,PLUGIN_WRITE_GUARD}=1`.
+  - 보조 3개: `HARNESS_GUARD_V2_FLAG_TTL_SEC=21600` (6h default), `HARNESS_GUARD_V2_DIAG_LOG_DIR=harness-state/.logs/`, `HARNESS_GUARD_V2_ALL=1` (일괄 활성, 개발 편의).
+  - Stage 0~4: Iter 2 merge 직후 모두 off → jajang 재실측(AGENT_BOUNDARY+COMMIT_GATE) → 1주(AGENT_GATE) → 2주(SKILL_GATE+SKILL_STOP_PROTECT) → 배포(`HARNESS_GUARD_V2_ALL=1` default via `setup-rwh.sh`).
+
+`orchestration/rationale.md`:
+- **HARNESS-CHG-20260428-13** 항목 — 4섹션 (Context / Decision / Alternatives considered / Consequences):
+  - Context: jajang 12 reactive PR 의 4 카테고리 + 5번째 cross-guard silent dependency. 7 가드 단일 모델 통일이 cascade 진앙.
+  - Decision: 5+2 게이트 결정 (5 재설계 / 2 제외) + Layered Defense 명문화 + Staged Rollout + `[invariant-shift]` 토큰 정식화 + invariant 보호 대상 ↔ 모델 분리 (I-1/I-2/I-9).
+  - Alternatives considered (5개): (1) 일괄 blocklist 전환 거부 / (2) validator 사후 탐지 거부 / (3) **가드별 정책 분기 + Layered + Staged 채택** / (4) skill-stop-protect TTL 모델 일괄 도입 부분 채택 (헬퍼만 일반화) / (5) issue-gate / plugin-write-guard W2 포함 거부.
+  - Consequences: 4+1 카테고리 재발 구조적 차단 / 확정성 우선 (V2 코드 작성되나 env var 없이는 비활성) / 결정론 보존 (blocking ↔ informational 분리) / 회귀 위험 4개 격리 방어 (regex 컴파일 실패 / TTL 너무 짧음 / silent dependency 진단 false-positive / staged rollout flag 누락).
+
+**검증** (Iter 1 = 문서 only, 코드 변경 X):
+- `python3 -m py_compile harness/*.py hooks/*.py` — OK (변경 없음 확인).
+- `bash scripts/smoke-test.sh` — 회귀 0 (Iter 1 코드 변경 없음).
+- 문서 cross-link 점검 — `guard-catalog.md` ↔ `harness-spec.md` §0/§3 ↔ `harness-architecture.md` §5.6/§5.7/§5.8 ↔ `rationale.md` HARNESS-CHG-20260428-13 일치.
+
+**비변경 (의도)**:
+- 가드 코드 5개 (`agent-boundary.py`, `commit-gate.py`, `agent-gate.py`, `skill-gate.py`, `skill-stop-protect.py`) — Iter 2 (W2+W4) 에서 적용.
+- `harness/config.py` `engineer_scope` 필드 / `harness/tracker.py` `parse_ref` + `MUTATING_SUBCOMMANDS` / `hooks/harness_common.py` `auto_gc_stale_flag` 헬퍼 — Iter 2.
+- `harness/executor.py` live.json round-trip canary — Iter 2 (W4).
+- 회귀 테스트 + jajang monorepo fixtures + LLM marker variants corpus — Iter 3 (W5).
+- `issue-gate.py` / `plugin-write-guard.py` — W2 영구 제외 (rationale.md Alternatives 5번째). W4 진단 가시성만 흡수.
+
+**Linked**:
+- Issue #13 — Phase 2 Guard Model Realignment 메인 트래킹.
+- `docs/guard-catalog.md` — W1 1차 산출물 (신규).
+- `docs/impl/13-guard-realignment.md` — impl 계획 (Iter 2/3 작업 분해, qa 결정 A~E 반영).
+- `orchestration/rationale.md` HARNESS-CHG-20260428-13 — 4섹션 결정 근거.
+- 후속 PR (Iter 2): W2 5 가드 모델 변경 + W4 진단 enrichment + executor round-trip canary.
+- 후속 PR (Iter 3): W5 회귀 테스트 + jajang fixtures.
 
 **Exception**: —
 
