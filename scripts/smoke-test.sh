@@ -63,16 +63,19 @@ run ".claude-plugin/marketplace.json" python3 -c "import json; json.load(open('.
 
 echo ""
 echo "[3] PLUGIN_ROOT 폴백 + 명시 동작"
-run "폴백 (env 미설정 → ~/.claude)" python3 -c "
+# HARNESS-CHG-20260428-12: 폴백 = __file__ 기반 자기-감지. core.py 가
+# ${PLUGIN_ROOT}/harness/core.py 에 있다는 사실에서 root 추론. env 미설정 시도
+# session_state import 안정.
+run "폴백 (env 미설정 → __file__ self-detect)" python3 -c "
 import sys, os
 sys.path.insert(0, 'harness')
 if 'CLAUDE_PLUGIN_ROOT' in os.environ:
     del os.environ['CLAUDE_PLUGIN_ROOT']
 import importlib, core
 importlib.reload(core)
-expected_str = str(__import__('pathlib').Path.home() / '.claude')
-assert str(core.PLUGIN_ROOT) == expected_str, f'폴백 실패: {core.PLUGIN_ROOT} != {expected_str}'
-print('PLUGIN_ROOT 폴백 →', core.PLUGIN_ROOT)
+expected = str(__import__('pathlib').Path('harness/core.py').resolve().parent.parent)
+assert str(core.PLUGIN_ROOT) == expected, f'폴백 실패: {core.PLUGIN_ROOT} != {expected}'
+print('PLUGIN_ROOT 폴백 (__file__) →', core.PLUGIN_ROOT)
 "
 
 run "명시 (env 설정 → 그 경로)" python3 -c "
@@ -83,6 +86,20 @@ import importlib, core
 importlib.reload(core)
 assert str(core.PLUGIN_ROOT) == '/tmp/fake-plugin-root', f'명시 실패: {core.PLUGIN_ROOT}'
 print('PLUGIN_ROOT 명시 →', core.PLUGIN_ROOT)
+"
+
+run "session_state import (env 미설정 + 폴백)" python3 -c "
+import sys, os
+sys.path.insert(0, 'harness')
+if 'CLAUDE_PLUGIN_ROOT' in os.environ:
+    del os.environ['CLAUDE_PLUGIN_ROOT']
+import importlib, core
+importlib.reload(core)
+# session_state 가 PLUGIN_ROOT/hooks/ 에서 import 가능해야 함
+sys.path.insert(0, str(core.PLUGIN_ROOT) + '/hooks')
+import session_state
+assert hasattr(session_state, 'current_session_id'), 'session_state 손상'
+print('session_state OK from', core.PLUGIN_ROOT)
 "
 
 echo ""

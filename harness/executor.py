@@ -16,8 +16,20 @@ import threading
 import time
 from pathlib import Path
 
-# Plugin root resolution — CLAUDE_PLUGIN_ROOT env에 폴백 ~/.claude.
-PLUGIN_ROOT = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or str(Path.home() / ".claude"))
+# Plugin root resolution — env > __file__ self-detect > legacy fallback.
+# 자세한 사유는 harness/core.py _resolve_plugin_root 도 참조.
+def _resolve_plugin_root() -> Path:
+    env = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if env:
+        return Path(env)
+    # __file__ = ${PLUGIN_ROOT}/harness/executor.py
+    here = Path(__file__).resolve()
+    if here.parent.name == "harness":
+        return here.parent.parent
+    return Path.home() / ".claude"
+
+
+PLUGIN_ROOT = _resolve_plugin_root()
 
 
 def main() -> None:
