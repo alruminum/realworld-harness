@@ -433,4 +433,97 @@ gh CLI 미설치  →  GitHub Issue 번호(#N) 발급 불가
 
 ---
 
-> 새 항목은 위 형식으로 추가. Task-ID 헤더는 H2(`##`), 4섹션은 H3(`###`).
+## `HARNESS-CHG-20260428-13` — 2026-04-28
+
+> **Note**: 이전 항목들은 `Rationale / Alternatives / Decision / Follow-Up` 4섹션을 사용했다. 본 항목은 사용자 SPEC_READY 계획(plan.md) 의 형식 — `Context / Decision / Alternatives considered / Consequences` — 을 채택한다. 두 형식 모두 *WHY (이유 / 대안 / 결정 / 후속 영향)* 의 4축을 만족하며, 본 항목은 Phase 2 회고의 자연어 입력에 더 적합한 후자를 사용. 향후 Task-ID 도 사안에 따라 둘 중 선택 가능 (`policies.md` 표준 4축 충족 시).
+
+### Context
+
+2026-04-28 jajang dogfooding 회고: 12 reactive PR 가 4 카테고리 + 1 cross-guard 패턴으로 분류됐다.
+
+**4 카테고리** (plan.md):
+1. **path hardcode 잔존** (PR #4, #7, #10) — `src/`, `apps/<x>/src/` 등 단일 레포 가정이 ALLOW_MATRIX / commit-gate staged 패턴 / config 에 흩어져, 모노레포 도입 시 매번 reactive 패치.
+2. **marker fragility** (PR #5, #8, #9) — 단일 정규식(`r"#\d+|LOCAL-\d+"`, marker 변형 alias) 으로 LLM 출력 변형 흡수 못 함.
+3. **state persistence stuck** (PR #6, #11) — stale `HARNESS_ACTIVE` flag, `_escalate_history` 쌓임 등 self-healing 부재. 외부 종료 시 잔존.
+4. **scope strict** (PR 다수) — engineer false-block 의 진앙. ALLOW_MATRIX 정적 → 모노레포마다 코드 편집 강요.
+
+**5번째 위험 (qa 진단 발견)**: cross-guard silent dependency chain. `skill-gate` 의 `live.json.skill` 쓰기 silent 실패 → `agent-boundary` 가 활성 스킬 못 읽음 → 정당한 작업 false-block. 사용자에게 진단 부재 → "왜 막혔는지" confusion.
+
+근본 원인 진단 (Phase 2 W1 catalog):
+- 7개 PreToolUse 가드의 정책이 **단일 모델(allowlist) 로 통일**되어, 보호 대상이 다른데도(보안 vs 책임 분리 vs 일관성) 같은 fail mode 를 공유한다.
+- 모델 변경이 한 가드에 일어나면 다른 가드와의 silent dependency 가 cascade 를 일으킨다.
+
+→ Phase 2 (Guard Model Realignment) 의 입력. 본 Task-ID 는 W1 (catalog 게이트) + W3 (spec/architecture 정렬) 의 의사결정 근거 기록.
+
+### Decision
+
+**W1 게이트 결정 — 7 가드 중 5 재설계 / 2 제외**:
+
+| 가드 | Phase 2 W2 포함 | 근거 |
+|---|---|---|
+| `agent-boundary.py` | 포함 (HIGH) | scope strict 진앙. ALLOW_MATRIX engineer 키 동적화 (`engineer_scope` config) + Read 경계는 보안 모델 유지. |
+| `commit-gate.py` | 포함 (HIGH) | Gate 1/3/4/5 책임 비대 + staged regex drift. agent-boundary 와 같은 source 에서 staged 패턴 파생. |
+| `agent-gate.py` | 포함 (HIGH) | stale flag silent-pass + 추적 ID 단일 regex. flag age check + GC + tracker.parse_ref 위임. |
+| `skill-gate.py` | 포함 (MEDIUM) | 5번째 위험의 진앙. 쓰기 실패 stderr + 진단 집계 (passive recorder 본질 유지). |
+| `skill-stop-protect.py` | 부분 포함 (MEDIUM) | TTL/auto_release 모델이 가장 robust. **이 모델을 다른 가드에 일반화** 하는 reference. 자체는 진단 로그 표준만. |
+| `issue-gate.py` | **제외** (LOW) | 30 LOC 단순 + 단일 fail mode (false-block, 보안적 정답). W4 진단 가시성만 흡수. |
+| `plugin-write-guard.py` | **제외** (LOW) | 보안 가드 — allowlist + ENV 우회 모델이 정답. 모노레포 가정 영향 없음. |
+
+**핵심 정책 결정**:
+
+1. **Layered Defense ↔ Determinism 정책 명문화** (`harness-architecture.md` §5.7 신설):
+   - **Blocking layer**: invariant 위반 시 즉시 deny. 동일 입력 → 동일 결과 (결정론). agent-boundary / plugin-write-guard / commit-gate Gate 1·5 / agent-gate / issue-gate / skill-stop-protect.
+   - **Informational layer**: fail 시 stderr 경고 + diag log. **차단 결정 권한 없음.** skill-gate 쓰기 실패 / agent-boundary live.json 폴백 / executor round-trip canary / deny 메시지 enrichment.
+   - 결정론 = blocking layer 의 책임. informational layer 는 silent cascade 를 가시화할 뿐 invariant 를 완화하지 않음.
+
+2. **Staged Rollout** (`harness-architecture.md` §5.8 신설):
+   - `HARNESS_GUARD_V2_<NAME>` env var 7개 + 보조 3개 (`FLAG_TTL_SEC`, `DIAG_LOG_DIR`, `ALL`).
+   - 미설정 시 v1 fallback (현행 동작 유지) — 확정성 우선.
+   - Stage 0~4 점진 활성화 — Iter 2 merge → jajang 재실측 → 1주 → 2주 → default.
+
+3. **`[invariant-shift]` PR title 토큰 정식화** (`harness-spec.md` §0):
+   - §0 약화뿐 아니라 §3 invariant 표현·모델·효과 범위 변경 PR 모두 의무화.
+   - 단순 typo / 진단 로그 / 디버깅 추가는 제외.
+   - pr-reviewer 가 누락 PR 자동 reject. commit message body 에 `HARNESS-CHG-YYYYMMDD-NN` 동반 필수.
+
+4. **Invariant 보호 대상 ↔ 모델 분리** (`harness-spec.md` §3 I-1, I-2, I-9):
+   - 보호 대상 (책임 분리 / 추적성 / 보안) 과 현재 모델 (allowlist / 동적 config / 정규식) 을 분리 명시.
+   - 모델은 진화 가능, 보호 대상의 효과 동등성은 PR 본문 + rationale 에 입증 필수.
+   - **보안 가드 예외**: agent-boundary Read 경계 + plugin-write-guard 는 allowlist 모델 자체가 invariant.
+
+식별자: `HARNESS-CHG-20260428-13` (Issue #13 기준).
+
+### Alternatives considered
+
+| # | 옵션 | 평가 |
+|---|---|---|
+| 1 | **일괄 allowlist → blocklist 전환** — 모든 가드를 blocklist (deny list) 모델로 통일 | **거부** — 보안 가드(plugin-write-guard, agent-boundary Read 경계) 에서 위험. blocklist 는 신규 위협 발생 시 기본 통과(false-pass) → 보호 약화. 보안 가드는 allowlist 가 정답. |
+| 2 | **validator 로 가드 책임 이동** — PreToolUse 차단을 줄이고 validator(Code) 가 사후 탐지 | **거부** — §0 결정론과 충돌. 사전 차단(deterministic, 같은 입력 같은 결과) 을 사후 탐지(probabilistic, LLM 판정) 로 강등. 워크플로우 강제 invariant(I-1, I-2, I-9) 가 약화. |
+| 3 | **가드별 정책 분기 + Layered Defense + Staged Rollout** — 보호 대상이 같은 가드끼리 모델 통일, 다른 가드는 모델 자유. blocking/informational 레이어 분리. 환경변수로 점진 rollout. | **선택** — (1) 보호 대상별 정답 모델 유지 (보안 가드 allowlist, 책임 분리 가드 동적 config), (2) silent dependency cascade 를 informational layer 로 가시화하되 차단 결정은 blocking layer 단독, (3) 회귀 0 보장 (env off 시 v1 동작). |
+| 4 | **skill-stop-protect 의 TTL 모델을 모든 가드에 일괄 도입** | **부분 채택** — TTL/auto_release/max_reinforcements 패턴은 reference 로 살리되, 가드별 보호 대상에 맞게 적용. agent-gate 의 stale flag GC 에 일반화 (`auto_gc_stale_flag` 헬퍼), agent-boundary 는 informational 폴백만. 모든 가드 일괄 적용은 보안 가드의 결정론 약화. |
+| 5 | **issue-gate / plugin-write-guard 도 W2 포함** | **거부** — issue-gate 는 30 LOC + 단일 fail mode (false-block, 보안적 정답). plugin-write-guard 는 모노레포 가정 영향 없음 + 보안 가드 정답. W2 변경은 회귀 위험만 추가. W4 진단 가시성만 흡수. |
+
+### Consequences
+
+**기대 효과**:
+- **새 사용자 install 신뢰성 ↑** — monorepo 도입 시 ALLOW_MATRIX 코드 편집 불필요. `harness.config.json` 의 `engineer_scope` 만 수정.
+- **jajang 4+1 카테고리 재발 차단** — path hardcode (config 동적화), marker fragility (tracker 단일 책임), state stuck (flag age GC), scope strict (engineer_scope), silent dependency (informational layer 가시화) 모두 구조적으로 해결.
+- **확정성 우선** — V2 코드는 작성되지만 환경변수 없이는 활성 안 됨. production-tested 후 default 전환 → 회귀 0 보장.
+- **결정론 보존** — layered defense 분리로 진단 풍부화는 informational layer 로, 차단 결정은 blocking layer 단독. §0 워크플로우 강제 invariant 약화 없음.
+
+**위험과 격리**:
+- **W2 회귀 위험은 feature flag 로 격리** — `HARNESS_GUARD_V2_*` 미설정 = v1 동작. 사용자가 V2 활성화 시점을 통제.
+- **monorepo regex 컴파일 실패 → silent-bypass 위험**: 명시적 fallback (`patterns or static`) + stderr 경고 + smoke-test §10 검증 (impl §4.2).
+- **flag GC TTL 너무 짧음 → 장시간 engineer 차단**: default 6h 보수적 + executor heartbeat (매 attempt mtime touch) + 사용자 override (`HARNESS_GUARD_V2_FLAG_TTL_SEC`) (impl §4.3).
+- **silent dependency chain 진단의 false-positive**: stderr 경고가 정상 흐름에서도 발생하면 노이즈. 실패 케이스만 출력하도록 except 분기 명확화 (impl §4 / catalog §3.3).
+
+**후속 영향 (Iter 2 / Iter 3 인계)**:
+- W2 코드 변경 (5 가드 + tracker MUTATING_SUBCOMMANDS / parse_ref + harness_common auto_gc_stale_flag) — engineer 호출.
+- W4 deny 메시지 enrichment + executor round-trip canary — engineer 호출.
+- W5 회귀 검증 + jajang fixtures (apps/api, apps/web monorepo + LLM marker variants corpus) — test-engineer 호출.
+- changelog.md `HARNESS-CHG-20260428-13.[1-5]` 항목은 Iter 1 commit 직전 메인 일괄 처리.
+- 향후 백엔드 추가(Linear, GitLab) 시 본 결정의 tracker 단일 책임 패턴이 그대로 흡수.
+
+---
+
+> 새 항목은 위 형식으로 추가. Task-ID 헤더는 H2(`##`), 4섹션은 H3(`###`). 4섹션은 `Rationale/Alternatives/Decision/Follow-Up` 또는 `Context/Decision/Alternatives considered/Consequences` 둘 중 선택 — `policies.md` 의 *WHY 4축* (이유 / 대안 / 결정 / 후속) 만 만족하면 일관성 보존.

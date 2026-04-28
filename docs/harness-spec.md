@@ -3,7 +3,7 @@
 > RealWorld Harness 플러그인의 목적·불변식·게이트·비목표 정의.
 > 일반 제품 PRD가 아닌, 메타 시스템(코딩 에이전트 오케스트레이션)의 운영 헌법.
 
-작성: 2026-04-27 / 최근 갱신: §0 Core Invariant 추가 (`HARNESS-CHG-20260427-03`)
+작성: 2026-04-27 / 최근 갱신: §0 PR token 룰 정식화 + §3 I-1/I-2/I-9 표현 갱신 (`HARNESS-CHG-20260428-13`)
 
 ---
 
@@ -26,6 +26,24 @@
 - 본 §0을 약화시키는 변경(예: 게이트 우회, 에이전트 자율성 확대, 예측 가능성 완화)은 PR title에 `[invariant-shift]` 토큰을 명시한다.
 - 해당 PR은 `orchestration/rationale.md` 의 4섹션(Rationale / Alternatives / Decision / Follow-Up) 중 **Alternatives**에 *왜 이 워크플로우 불변식이 깨져야 하는가*를 명시 필수.
 - 자동 게이트(`scripts/check_doc_sync.py`, Phase 2.5+)는 `[invariant-shift]` PR 제목에 `Document-Exception:` 라인이 동반되지 않으면 머지 차단.
+
+### `[invariant-shift]` PR title 토큰 — 정식 룰
+
+본 토큰은 §0 약화 변경뿐 아니라 §3 invariant(I-1 ~ I-N)의 **표현·모델·효과 범위**가 바뀌는 모든 PR에 의무화된다 (`HARNESS-CHG-20260428-13`).
+
+**토큰 사용 기준**:
+- §3 invariant의 **표현(wording)** 이 바뀌는 PR — 예: I-2 의 `#N` 단일 형식 → 추적 ID 일반형(`HARNESS-CHG-20260428-01`).
+- 강제 **모델(model)** 이 바뀌는 PR — 예: I-1 의 정적 allowlist → 동적 config 로드(`engineer_scope`, Phase 2 W2).
+- **효과 범위(scope)** 가 바뀌는 PR — 예: 인프라 프로젝트 예외가 새 카테고리로 확장.
+
+**토큰 미사용 기준** (단순 변경):
+- typo / 줄바꿈 / 주석 정리 등 reword 없는 mechanical refactor.
+- 디버깅 로그 추가, 진단 메시지 enrichment(deny 결정에 영향 없음).
+- 다른 invariant에 영향 없는 단일 가드의 내부 구현 정리.
+
+**모든 PR 식별자 동반 의무**:
+- PR title 에 `[invariant-shift]` 가 있으면 commit message body 에 `HARNESS-CHG-YYYYMMDD-NN` 식별자 동반 필수.
+- pr-reviewer 는 §3 invariant 변경이 감지된 PR 에서 토큰이 누락되면 자동 reject. 메인이 우회하려면 `Document-Exception:` 라인 + `rationale.md` Alternatives 항목 추가가 강제된다.
 
 > *현실 세계의 프로덕트 조직(기획·UX·아키·엔지·QA·리뷰)이 그러하듯, 개별 구성원이 똑똑해진다고 회사의 의사결정 절차가 사라지지는 않는다. RealWorld Harness의 가치는 그 절차에 있다.*
 
@@ -72,16 +90,19 @@
 깨지면 즉시 escalate. 어느 에이전트·스킬도 우회 불가.
 
 ### I-1. 메인 Claude는 `src/**`를 직접 수정하지 않는다
-- 강제 지점: `hooks/agent-boundary.py` PreToolUse(Edit/Write).
+- **보호 대상**: 책임 분리 — 코드 변경의 책임이 engineer (역할 전문 에이전트) 에게만 있도록 보장. 메인 단독 수정은 architect 계획·designer 토큰·validator 검증을 모두 우회.
+- **현재 모델**: `hooks/agent-boundary.py` PreToolUse(Edit/Write) 의 ALLOW_MATRIX 동적 화이트리스트(`engineer_scope` config + default 7 패턴 fallback). 이전 정적 `^src/**` 단일 패턴에서 monorepo 대응 동적 모델로 일반화 (`HARNESS-CHG-20260428-13`).
+- **모델 변경 정책**: 본 invariant 의 **보호 대상은 책임 분리** — 모델이 allowlist / blocklist / config-driven 어떤 형태로 진화해도 "메인 단독 수정 차단" 효과가 유지되어야 한다. 모델 변경 시 그 효과의 동등성을 PR 본문 + `rationale.md` 에 입증 필수.
+- **보안 가드 예외 (모델 고정)**: `agent-boundary.py` 의 Read 경계(`READ_DENY_MATRIX`, `HARNESS_INFRA_PATTERNS`) 와 `plugin-write-guard.py` 는 **보안** 보호이므로 allowlist 모델 자체가 invariant. 이 둘은 모델 변경 금지.
 - 예외: 인프라 프로젝트 (`is_infra_project()` True인 경우) — `~/.claude` 자체.
-- 출처: `orchestration-rules.md:29-35`, `CLAUDE.md:113-125`.
+- 출처: `orchestration-rules.md:29-35`, `CLAUDE.md:113-125`, `docs/guard-catalog.md` (가드별 보호 대상 ↔ 모델 분리 표).
 
 ### I-2. 모든 구현은 하네스 루프를 거친다
-- 강제 지점: `harness/executor.py impl --impl <path> --issue <REF>`.
-- `<REF>` 는 추적 ID 일반형 — `#N` (GitHub Issue) 또는 `LOCAL-N` (LocalBackend, `orchestration/issues/INDEX.jsonl`).
+- **보호 대상**: 추적성 — 모든 구현이 식별 가능한 추적 ID 와 결합되어 누가 무엇을 결정·실행했는지 사후 재구성 가능.
+- **현재 모델**: `harness/executor.py impl --impl <path> --issue <REF>` + `harness/tracker.py` 백엔드 추상화. `<REF>` 는 추적 ID 일반형 — `#N` (GitHub Issue) 또는 `LOCAL-N` (LocalBackend, `orchestration/issues/INDEX.jsonl`).
+- **표현 검증**: agent-gate.py 가 `tracker.parse_ref()` 위임으로 `#N | LOCAL-N` 형식 모두 수용 (`HARNESS-CHG-20260428-13` 이전: 단일 정규식 `r"#\d+|LOCAL-\d+"`, Phase 2 W2 이후: tracker 단일 책임). 향후 백엔드 추가(Linear, GitLab 등) 시 본 invariant 표현은 그대로 유지되고 tracker 가 흡수.
+- **모델 변경 정책**: 보호 대상은 추적성 자체 — 추적 ID 가 인터뷰/구현/리뷰 모든 구간에 결합되는 효과가 유지되는 한, 백엔드 / 형식 / 검증 위치는 자유롭게 진화 가능. depth=simple 으로 경량화는 가능하지만 추적 ID 우회는 없다.
 - 백엔드는 `harness/tracker.py` 가 환경에 따라 자동 선택 (`gh` CLI 가용성 + repo 연결 + `HARNESS_TRACKER` env). gh 미설치 환경에서도 `LOCAL-N` 폴백으로 추적성 보존.
-- 추적 ID 강제 자체는 보존 — agent-gate.py:78 이 `r"#\d+|LOCAL-\d+"` 정규식으로 검증.
-- depth=simple으로 경량화 가능하지만 우회는 없다.
 
 ### I-3. 유저 게이트에서 자동 진행 금지
 - `READY_FOR_IMPL`, `UX_FLOW_READY`, `PLAN_REVIEW_PASS` 등 마커 도달 시 메인은 유저 승인 없이 다음 단계로 진입할 수 없다.
@@ -98,14 +119,18 @@
 - 위반 시 토큰 폭주 → 11분 timeout.
 
 ### I-7. 활성 에이전트 판정은 단일 소스
-- `session_state.active_agent()` 하나만 사용. 별도 폴백/TTL 추가 금지.
+- `session_state.active_agent()` 하나만 deny 결정에 사용. 별도 폴백/TTL 이 *deny 결정*에 끼어들지 않는다.
+- **명확화** (`HARNESS-CHG-20260428-13`): 본 invariant 의 SSOT 는 `live.json.agent` 에 의한 *활성 에이전트 판정*. 별도 상태인 `HARNESS_ACTIVE` flag (executor 점유 신호) 의 age check + GC (Phase 2 W2) 는 본 invariant 와 무관 — 다른 상태 객체 + informational layer 의 fallback (`HARNESS_AGENT_NAME` env stderr 경고) 도 *진단용*이라 deny 결정에 영향 없음. `harness-architecture.md` §5.7 layered defense 정책 참조.
 
 ### I-8. 플러그인 디렉토리(`~/.claude/plugins/{cache,marketplaces,data}/`) 직접 수정 금지
 - 재설치 시 증발하거나 drift 발생.
 - 우회가 필요하면 `~/.claude/hooks/`에 선행 훅 추가.
 
 ### I-9. 하네스 인프라 변경(`hooks/`, `harness/`, `scripts/`, `agents/`)은 메인 단독 Edit/commit 금지
-- qa → architect → engineer 위임 강제 (`MEMORY.md` 참조).
+- **보호 대상**: 책임 분리 + 추적성 — 인프라 변경(가드 정책 / executor 코어 / 에이전트 계약)은 진단(qa) → 계획(architect) → 구현(engineer) 의 위임 체인을 강제하여, 메인 단독으로는 워크플로우 자체를 변형할 수 없도록 한다.
+- **현재 모델**: `agent-boundary.py` 의 `HARNESS_INFRA_PATTERNS` (정규식 차단 + `is_infra_project()` 신호 1~3 OR 통과) + 메모리 기반 위임 룰(`feedback_harness_infra_no_solo_edit`).
+- **모델 변경 정책**: 보호 대상이 책임 분리이므로 패턴 / 신호 OR 조합 / 위임 룰의 표현은 진화 가능. 단, "메인 단독 변경 시 즉시 차단"의 효과는 유지.
+- 위임 강제 출처: `MEMORY.md` (PR #65/#75 거짓 commit msg 사고 방지).
 
 ---
 

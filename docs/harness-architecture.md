@@ -3,7 +3,7 @@
 > `harness-spec.md`의 불변식·게이트를 구현하는 훅·코어·상태·경계 정책 정의.
 > 시스템 동작 추적은 본 문서로, 의도·목적은 spec 문서로 분리.
 
-작성: 2026-04-27 / 최근 갱신: 경로 추상화 + `hooks/hooks.json` (`HARNESS-CHG-20260427-02`)
+작성: 2026-04-27 / 최근 갱신: §5 가드 정책 일람 + Layered Defense + Staged Rollout (`HARNESS-CHG-20260428-13`)
 
 ---
 
@@ -117,6 +117,14 @@ HARNESS_INFRA_PATTERNS = [
 
 > 워크트리 격리 적용 시 cwd가 `.worktrees/` 내부로 빠지므로 신호 4만으로 부족. 신호 1~3 중 하나가 함께 set되어야 인프라 인식 유지 (이슈 #84).
 
+### 3.5 가드 정책 카탈로그 reference
+
+7개 PreToolUse 가드(`agent-boundary`, `commit-gate`, `agent-gate`, `skill-gate`, `skill-stop-protect`, `issue-gate`, `plugin-write-guard`)의 보호 대상 / 현재 모델 / 환경 가정 / fail mode / 재설계 권장은 단일 카탈로그에 집약된다.
+
+→ **`docs/guard-catalog.md`** (Phase 2 W1 산출물, `HARNESS-CHG-20260428-13`).
+
+본 §3.1~§3.4 의 ALLOW_MATRIX, READ_DENY_MATRIX, HARNESS_INFRA_PATTERNS 표는 catalog 의 실행 표현이다. 가드별 1페이지 상세는 catalog §2, cross-guard silent dependency chain (5번째 위험) 분석은 catalog §3 참조.
+
 ---
 
 ## 4. 세션 라이프사이클
@@ -220,6 +228,87 @@ cwd가 화이트리스트 경로 또는 그 서브디렉토리 → True
 - `.gitignore`에 `.worktrees/` 자동 등록.
 - `HARNESS_ISSUE_NUM` env로 훅이 이슈별 플래그 디렉토리 참조.
 - `harness/core.py:find_main_repo_root()` — Claude Code Bash가 cwd를 worktree 안에 persist시켜도 main repo로 복귀 (L2 방어).
+
+### 5.6 가드 정책 일람 (catalog 매핑)
+
+7개 PreToolUse 가드의 정책·보호 대상·재설계 범위는 `docs/guard-catalog.md` 가 정본이다. 본 섹션은 architecture 차원의 한 줄 요약 + Phase 2 W2 변경 범위만 명시한다.
+
+| 가드 | 보호 대상 | Phase 2 W2 변경 | 출처 |
+|---|---|---|---|
+| `agent-boundary.py` | 책임 분리 (file ownership) + 일관성 | engineer scope 동적화 (`engineer_scope` config). Read 경계는 보안 모델 유지. | catalog §2.1 |
+| `commit-gate.py` | 추적성(Gate 1) + 일관성(Gate 4) + 책임 분리(Gate 5) | staged 패턴을 `engineer_scope` 와 같은 source 에서 파생 + tracker `MUTATING_SUBCOMMANDS` 위임 | catalog §2.2 |
+| `agent-gate.py` | 워크플로우 강제 + 추적성 + 책임 분리 | HARNESS_ACTIVE flag age check + GC + 추적 ID `tracker.parse_ref()` 위임 | catalog §2.3 |
+| `skill-gate.py` | 일관성 (스킬 컨텍스트 SSOT) | 쓰기 실패 stderr 경고 + 진단 집계. passive recorder 본질 유지. | catalog §2.5 |
+| `skill-stop-protect.py` | 워크플로우 강제 (medium/heavy 보호) | 진단 로그 포맷 표준화. TTL/auto_release 모델은 다른 가드의 reference. | catalog §2.6 |
+| `issue-gate.py` | 책임 분리 (이슈 생성/수정 권한) | **모델 변경 없음**. W4 진단 가시성만 흡수. | catalog §2.4 |
+| `plugin-write-guard.py` | 보안 (CC 플러그인 매니저 영역) | **모델 변경 없음**. allowlist + ENV 우회 = 보안 가드 정답. | catalog §2.7 |
+
+### 5.7 Defense-in-depth ↔ Determinism 정책 (Layered Defense)
+
+가드 정책은 두 레이어로 구분된다. 각 레이어의 책임 분리는 **결정론**(같은 입력 → 같은 deny/allow 결과)을 보장한다.
+
+#### Blocking layer (결정론 — invariant 강제)
+
+**불변식 위반 시 즉시 차단.** 동일 입력에 동일 deny 결과를 보장.
+
+| 가드 | Blocking 트리거 | 출처 |
+|---|---|---|
+| `agent-boundary.py` | Write/Edit/Read 가 ALLOW_MATRIX / READ_DENY_MATRIX / HARNESS_INFRA_PATTERNS 위반 시 deny | I-1 / I-9 |
+| `plugin-write-guard.py` | `~/.claude/plugins/{cache,marketplaces,data}/` Write/Edit 시 deny (ENV 우회 명시 시 통과) | I-8 |
+| `commit-gate.py` Gate 1 | 메인 Claude 가 `gh issue create/edit` / tracker mutate 직접 호출 시 deny | policies.md 정책 3 |
+| `commit-gate.py` Gate 5 | `engineer_scope` 매치 staged 파일 + main branch + LGTM 플래그 부재 시 deny | I-1 |
+| `agent-gate.py` (HARNESS_ONLY) | `engineer` 직접 Agent 호출 + harness_active 플래그 부재 시 deny | I-2 |
+| `agent-gate.py` (추적 ID) | architect/engineer 호출 프롬프트에 `tracker.parse_ref` 매치 부재 시 deny | I-2 |
+| `issue-gate.py` | `live.json.agent` ∈ ISSUE_CREATORS 외 mcp__github__create_issue/update_issue 시 deny | policies.md 정책 3 |
+| `skill-stop-protect.py` | medium/heavy 스킬 active + Stop 발동 + (TTL/max_reinforcements 미도달) 시 차단 | 워크플로우 보호 |
+
+#### Informational layer (진단 — 차단 결정 권한 없음)
+
+**fail 시 stderr 경고만, deny 결정은 변경하지 않음.** 진단 가시성만 추가.
+
+| 가드 / 헬퍼 | Informational 동작 | 출처 |
+|---|---|---|
+| `skill-gate.py` | `live.json.skill` 쓰기 실패 시 stderr 경고 + `harness-state/.logs/skill-gate.jsonl` 집계. 차단 없음 (passive recorder). | catalog §2.5 |
+| `skill-stop-protect.py` | 진단 로그 표준 포맷 출력. 차단 결정은 별도 blocking 레이어. | catalog §2.6 |
+| `agent-boundary.py` (W4) | `live.json.agent` 누락 + `HARNESS_AGENT_NAME` env 존재 시 stderr 경고. **deny 결정은 SSOT(live.json) 단독** — env 폴백은 진단용. | impl §2.3 |
+| `harness/executor.py` (W4) | 진입 시 live.json round-trip canary 테스트. 실패 시 즉시 ESCALATE — silent dependency cascade 사전 차단. | impl §2.4 |
+| 모든 deny 메시지 (W4) | `live.json` 쓰기 진단 + scope source(static/V2) 표기. 사용자가 "왜 막혔는지" 즉시 확인. | impl §1.1 |
+
+**중요 원칙**:
+- **결정론 = blocking layer 의 책임**. informational layer 는 invariant 를 완화하거나 차단 결정에 끼어들지 않는다.
+- **silent dependency chain 방어** (catalog §3 5번째 위험): live.json 쓰기 실패 → 다른 가드 false-block 의 cascade 를 informational layer 가 stderr/diag log 로 가시화. **단, 차단 결정은 1차 검증 단독.**
+- 두 레이어 분리 위반(예: 진단 실패 시 자동 통과 / 차단 결정에 fallback 끼어들기)은 §0 워크플로우 강제 위반 — `[invariant-shift]` PR 토큰 + rationale Alternatives 필수.
+
+### 5.8 Staged Rollout — `HARNESS_GUARD_V2_*` 환경변수
+
+가드 모델 변경(Phase 2 W2)은 환경변수로 점진 활성화하여 **확정성 우선** 정책을 따른다. 미설정 시 v1 fallback (현행 동작 유지).
+
+| 환경변수 | 가드 | 활성 시 동작 |
+|---|---|---|
+| `HARNESS_GUARD_V2_AGENT_BOUNDARY=1` | `agent-boundary.py` | ALLOW_MATRIX["engineer"] 동적 로드 (config) + deny 메시지 진단 enrichment |
+| `HARNESS_GUARD_V2_COMMIT_GATE=1` | `commit-gate.py` | staged 패턴 동적 + tracker.MUTATING_SUBCOMMANDS 위임 |
+| `HARNESS_GUARD_V2_AGENT_GATE=1` | `agent-gate.py` | HARNESS_ACTIVE flag age check + tracker.parse_ref 위임 |
+| `HARNESS_GUARD_V2_SKILL_GATE=1` | `skill-gate.py` | 쓰기 실패 stderr 경고 + 진단 집계 |
+| `HARNESS_GUARD_V2_SKILL_STOP_PROTECT=1` | `skill-stop-protect.py` | 진단 로그 포맷 표준화 |
+| `HARNESS_GUARD_V2_ISSUE_GATE=1` | `issue-gate.py` | (W4 한정) deny 메시지 진단 enrichment |
+| `HARNESS_GUARD_V2_PLUGIN_WRITE_GUARD=1` | `plugin-write-guard.py` | (W4 한정) deny 메시지 진단 enrichment |
+
+**보조 환경변수**:
+
+| 환경변수 | 기본값 | 설명 |
+|---|---|---|
+| `HARNESS_GUARD_V2_FLAG_TTL_SEC` | `21600` (6h) | HARNESS_ACTIVE flag age check TTL |
+| `HARNESS_GUARD_V2_DIAG_LOG_DIR` | `harness-state/.logs/` | 진단 로그 디렉토리 |
+| `HARNESS_GUARD_V2_ALL=1` | (off) | 7개 가드 V2 일괄 활성 (개발 편의) |
+
+**Rollout 단계** (impl §5.3):
+- Stage 0 (Iter 2 merge 직후): 모든 V2 flag off — 회귀 0 확인.
+- Stage 1 (jajang 재실측): `AGENT_BOUNDARY` + `COMMIT_GATE` 만 on. 모노레포 시나리오 통과.
+- Stage 2 (1주): `AGENT_GATE` 추가. stale flag 시나리오 통과.
+- Stage 3 (2주): `SKILL_GATE` + `SKILL_STOP_PROTECT` 추가. 진단 가시성 활성.
+- Stage 4 (배포): `HARNESS_GUARD_V2_ALL=1` default — `setup-rwh.sh` 자동 export.
+
+**확정성 우선 원칙**: V2 동작이 production-tested 되기 전까지 환경변수 없이는 v1 동작 보장. 회귀 0 == staged rollout 의 선결 조건.
 
 ---
 
