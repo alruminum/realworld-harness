@@ -1380,8 +1380,7 @@ class WorktreeManager:
         reused=True 이면 worktree 측에 이미 동일 경로 파일이 존재할 경우 보존 (덮어쓰기 금지).
         fresh 케이스(reused=False) 는 기존 동작 그대로.
         """
-        import shutil
-        r = _git("ls-files", "--others", "--exclude-standard")
+        r = _git("ls-files", "--others", "--exclude-standard", cwd=str(self.project_root))
         if r.returncode != 0:
             return
         copied = 0

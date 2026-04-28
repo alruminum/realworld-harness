@@ -4,6 +4,7 @@ Issue #26: reuse 분기에서 untracked plan 파일이 복사되지 않던 hole.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -100,3 +101,50 @@ class TestREQ003FreshPathRegression:
         wt = wm.create_or_reuse("test/issue-42", "42")
 
         assert (wt / "docs/bugfix/#42-bug.md").read_text() == "BUG NOTE\n"
+
+
+class TestREQ004FreshPathNoOverwrite:
+    """REQ-004: fresh 생성 시 worktree 에 이미 존재하는 파일이 없으므로 전부 복사."""
+
+    def test_fresh_copies_all_untracked_plans(self, tmp_path, monkeypatch):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_repo(repo)
+        monkeypatch.chdir(repo)
+
+        _write_untracked_plan(repo, "docs/impl/99-spec.md", "SPEC\n")
+        _write_untracked_plan(repo, "docs/milestones/v1/epic.md", "EPIC\n")
+
+        wm = WorktreeManager(repo, prefix="test")
+        wt = wm.create_or_reuse("test/issue-99", "99")
+
+        assert (wt / "docs/impl/99-spec.md").read_text() == "SPEC\n"
+        assert (wt / "docs/milestones/v1/epic.md").read_text() == "EPIC\n"
+
+
+class TestREQ005CwdIndependence:
+    """REQ-005: cwd 가 worktree 디렉토리여도 main repo untracked plan 이 복사된다."""
+
+    def test_cwd_in_worktree_still_copies_main_plan(self, tmp_path, monkeypatch):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_repo(repo)
+        monkeypatch.chdir(repo)
+
+        wm = WorktreeManager(repo, prefix="test")
+        # 1차 생성 (fresh)
+        wt = wm.create_or_reuse("test/issue-55", "55")
+        assert wt.exists()
+
+        # main 에 untracked plan 추가
+        _write_untracked_plan(repo, "docs/impl/55-plan.md", "CWD TEST\n")
+
+        # cwd 를 worktree 안으로 변경 (worktree 에는 같은 파일 없음)
+        monkeypatch.chdir(wt)
+
+        # reuse 호출 — project_root 기반으로 ls-files 를 실행해야 main plan 을 스캔
+        wm.create_or_reuse("test/issue-55", "55")
+
+        copied = wt / "docs/impl/55-plan.md"
+        assert copied.exists(), "cwd=worktree 상황에서도 main repo untracked plan 이 복사되어야 함"
+        assert copied.read_text() == "CWD TEST\n"
