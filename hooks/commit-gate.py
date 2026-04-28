@@ -204,14 +204,10 @@ def main():
     if not os.path.exists(f"{get_flags_dir()}/{PREFIX}_{FLAGS.PR_REVIEWER_LGTM}"):
         # V2 deny enrichment — §1.2 / W4
         if os.environ.get("HARNESS_GUARD_V2_COMMIT_GATE") == "1" or os.environ.get("HARNESS_GUARD_V2_AGENT_BOUNDARY") == "1":
-            try:
-                from harness_common import _load_engineer_scope as _les
-                _scope_src = "harness.config.json (V2)" if (
-                    os.environ.get("HARNESS_GUARD_V2_COMMIT_GATE") == "1"
-                    or os.environ.get("HARNESS_GUARD_V2_AGENT_BOUNDARY") == "1"
-                ) else "static fallback"
-            except Exception:
-                _scope_src = "static fallback"
+            _scope_src = "harness.config.json (V2)" if (
+                os.environ.get("HARNESS_GUARD_V2_COMMIT_GATE") == "1"
+                or os.environ.get("HARNESS_GUARD_V2_AGENT_BOUNDARY") == "1"
+            ) else "static fallback"
             deny(
                 f"❌ [hooks/commit-gate.py] git commit 전 pr-reviewer LGTM 필요. "
                 f"{get_flags_dir()}/{PREFIX}_{FLAGS.PR_REVIEWER_LGTM} 없음.\n"

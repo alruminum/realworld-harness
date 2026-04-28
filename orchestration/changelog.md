@@ -811,4 +811,24 @@ def _resolve_plugin_root() -> Path:
 
 ---
 
+## `HARNESS-CHG-20260428-13.2` — 2026-04-28 — Phase 2 Iter 2 (W2+W4) 가드 V2 + ralph fallback
+
+**Type**: infra (5 가드 V2 분기 + Layered Defense 보강 + ralph-session-stop fallback)
+
+**Branch**: `harness/guard-realignment-iter2`
+
+**Issue**: #13 — Phase 2 Guard Model Realignment. W2 (5 가드 코드 변경) + W4 (deny 메시지 enrichment + executor round-trip canary) Iter 2 범위.
+
+**범위 요약**: 13.1 에서 정의한 V2 모델을 코드에 반영. `HARNESS_GUARD_V2_*` env unset 시 v1 동작 100% 보존(회귀 0). 5 가드 + ralph-session-stop 3-layer fallback + 4개 헬퍼 + executor canary.
+
+- PR review 후속 fix (LGTM 이전 단계):
+  - `hooks/agent-gate.py`: `flag_path` import 누락 추가 — V2 활성 시 `auto_gc_stale_flag()` 호출 직전 NameError 방지 (MUST FIX 1).
+  - `hooks/agent-boundary.py` + `hooks/commit-gate.py`: unused `_les` import + dead branch 제거 — V2 분기 정리 과정에서 남은 죽은 코드 (MUST FIX 2).
+  - `hooks/skill-stop-protect.py:121`: `clear_active_skill()` try/except 래핑 — `update_live` raise 변경에 따라 예외 전파로 `_log_event` 도달 못 하는 회귀 차단(권고).
+- impl 계획 정밀화: `docs/impl/13-guard-realignment.md` 를 architect (module-plan)이 줄번호 + 함수 시그니처 + 의사코드 수준으로 정밀화 (503 → 1099 line). 5번째 위험 실측 케이스 (Cross-guard Silent Dependency Chain) 를 W4 에 `ralph-session-stop` 3-layer fallback (`HARNESS_GUARD_V2_RALPH_FALLBACK`, default off) 으로 영구 fix 명시.
+
+**Exception**: —
+
+---
+
 > 새 항목은 위 표 + 본 섹션 양쪽에 추가. Phase 2 자동 게이트가 활성화되면 표는 `scripts/check_doc_sync.py` 가 갱신 검증.

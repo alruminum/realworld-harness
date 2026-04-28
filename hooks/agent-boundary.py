@@ -251,14 +251,10 @@ def main():
     allowed_desc = ", ".join(allowed_patterns)
     # V2 deny enrichment — §1.1 / W4 cross-guard cascade 진단
     if os.environ.get("HARNESS_GUARD_V2_AGENT_BOUNDARY") == "1":
-        try:
-            from harness_common import _load_engineer_scope as _les
-            _cfg_loaded = (
-                os.environ.get("HARNESS_GUARD_V2_AGENT_BOUNDARY") == "1"
-                or os.environ.get("HARNESS_GUARD_V2_ALL") == "1"
-            )
-        except Exception:
-            _cfg_loaded = False
+        _cfg_loaded = (
+            os.environ.get("HARNESS_GUARD_V2_AGENT_BOUNDARY") == "1"
+            or os.environ.get("HARNESS_GUARD_V2_ALL") == "1"
+        )
         scope_source = "harness.config.json" if _cfg_loaded else "static fallback"
         live_health = "OK" if active_agent else "MISSING (cross-guard cascade?)"
         deny(f"❌ [hooks/agent-boundary.py] {active_agent}는 {os.path.basename(fp)} 수정 불가. "

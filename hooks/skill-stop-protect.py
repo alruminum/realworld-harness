@@ -118,7 +118,10 @@ def main() -> int:
 
     # 2a) TTL 또는 max 도달 → 청소 + Stop 통과
     if (ttl and age >= ttl) or reinf >= max_reinf:
-        ss.clear_active_skill(sid, expect_name=name)
+        try:
+            ss.clear_active_skill(sid, expect_name=name)
+        except Exception:
+            pass
         _log_event({
             "event": "auto_release",
             "sid": sid, "skill": name, "level": level,

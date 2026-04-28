@@ -29,7 +29,7 @@ import re
 import subprocess
 from datetime import datetime
 from harness_common import (
-    get_prefix, get_state_dir, get_flags_dir, deny, flag_exists, FLAGS,
+    get_prefix, get_state_dir, get_flags_dir, deny, flag_exists, flag_path, FLAGS,
     HARNESS_ONLY_AGENTS, ISSUE_REQUIRED_AGENTS, CUSTOM_AGENTS,
     ARCHITECT_HARNESS_ONLY_MODES, VALIDATOR_HARNESS_ONLY_MODES,
     detect_architect_mode, detect_validator_mode, is_harness_enabled,
