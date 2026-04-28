@@ -60,6 +60,7 @@
 | `HARNESS-CHG-20260428-13.2` | 2026-04-28 | infra | Phase 2 Iter 2 (W2+W4) — 5 가드 + 1 ralph fallback + Layered Defense 보강. config.py engineer_scope 필드 + tracker.MUTATING_SUBCOMMANDS SSOT + harness_common 4개 헬퍼(_load_engineer_scope/auto_gc_stale_flag/_verify_live_json_writable/_STATIC_ENGINEER_SCOPE) + session_state.update_live 쓰기 실패 stderr 표준화 + executor.py round-trip canary(always-on) + HARNESS_ACTIVE flag heartbeat + agent-boundary/commit-gate/agent-gate/skill-gate/skill-stop-protect V2 분기 + ralph-session-stop 3-layer fallback(HARNESS_GUARD_V2_RALPH_FALLBACK, default off). 모든 V2 env unset 시 v1 동작 100% 회귀 0. py_compile + smoke-test 57/57 PASS. | — |
 | `HARNESS-CHG-20260428-14.1` | 2026-04-28 | infra | MARKER_ALIASES 12개 변형 추가 — PLAN_VALIDATION(PLAN_VALIDATED/PLAN_VERIFIED/PLAN_PASS/PLAN_INVALID) + LIGHT_PLAN_READY(LIGHT_PLAN_DONE/LIGHT_PLAN_COMPLETE/LIGHT_PLAN_WRITTEN/BUGFIX_PLAN_READY) + READY_FOR_IMPL(MODULE_PLAN_READY/MODULE_PLAN_DONE/IMPL_PLAN_READY/IMPL_READY/PLAN_DONE/PLAN_WRITTEN/PLAN_COMPLETE). validator/architect 가 canonical 대신 자유 텍스트 변형 emit 시 SPEC_GAP_ESCALATE / PLAN_VALIDATION_ESCALATE 로 attempt 무위 소진되던 사례 차단. defense in depth 2nd layer 두꺼워짐. | — |
 | `HARNESS-CHG-20260428-14.2` | 2026-04-28 | infra | WorktreeManager.create_or_reuse 에 untracked plan 파일 자동 복사 추가 — `git worktree add` 직후 main repo `ls-files --others --exclude-standard` 결과 중 `docs/bugfix/`, `docs/impl/`, `docs/milestones/` prefix 파일을 worktree 같은 상대경로로 cp. architect 가 main repo 에 LIGHT_PLAN 작성 후 commit 전 worktree 진입하면 engineer 가 'impl 파일 없음' no_changes 로 attempt 0 무위 소진되던 사고 차단. 안전 패턴: plan 디렉토리만 — src/ 등은 worktree 경계 보호 위해 제외. | — |
+| `HARNESS-CHG-20260428-14.3` | 2026-04-28 | infra | TDD 순서 강제 — impl_loop.py:928 `_tdd_active` 조건에서 `bool(config.test_command)` 의존성 제거. 1209 의 옛 폴백(engineer→test-engineer, OLD 순서) elif 블록 제거. test_command 부재가 TDD 자체를 끄지 않도록 — 테스트 작성은 회귀 방어 + impl 명세 검증 목적도 있고, RED/GREEN 실측 게이트만 test_command 가드 유지. jajang 류 std/deep 프로젝트에서 engineer 가 test-engineer 보다 먼저 실행되던 룰 위반 차단. | — |
 
 ---
 
@@ -888,6 +889,38 @@ def _resolve_plugin_root() -> Path:
 **Linked**:
 - 선행 `HARNESS-CHG-20260428-14.1` — 같은 묶음의 1번째 fix.
 - 후속 (이번 6건 묶음): C3 TDD 순서 / C4 pr-reviewer scope / C5 no_changes 분리.
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-14.3` — 2026-04-28 — TDD 순서 강제 (test_command 의존성 제거)
+
+**Type**: infra (워크플로우 룰 무결성)
+
+**Branch**: `harness/tdd-order-strict`
+
+**Issue**: `impl_loop.py:928` `_tdd_active = (attempt == 0 and bool(config.test_command) and depth in ("std", "deep"))` 조건이 `test_command` 미설정 프로젝트(예: jajang `harness.config.json` `"test_command": ""`)에선 `_tdd_active=False` → 1209 의 옛 폴백(engineer→test-engineer) 분기로 빠짐 → engineer 가 test-engineer 보다 먼저 실행 → TDD 룰("test 먼저, code 뒤") 정반대.
+
+**범위 요약**:
+- `harness/impl_loop.py:928` `_tdd_active` 조건에서 `bool(config.test_command) and ` 제거.
+  - 결과: `_tdd_active = (attempt == 0 and depth in ("std", "deep"))`. test_command 유무와 무관하게 std/deep attempt 0 이면 test-engineer 선행.
+- `harness/impl_loop.py:1209` `elif not config.test_command:` 폴백 블록 (~70 line) 제거.
+  - 옛 의도: test_command 가 없으면 TDD 의미가 없다고 판단해 engineer 먼저, test-engineer 나중. 그러나 테스트 작성 자체는 회귀 방어 + impl 명세 검증 목적도 있어 TDD 룰을 끄면 안 됨.
+- RED/GREEN 실측 게이트(`if _tdd_test_files and config.test_command:` 974, `if config.test_command:` 1283 부근)는 그대로 유지 — test_command 없으면 실행 게이트만 자연 스킵, 테스트 작성은 항상 함.
+- `_tdd_active or (attempt > 0 and depth in ("std", "deep"))` 분기는 `_run_std_deep` 가 항상 std/deep 으로만 호출되므로 결과적으로 항상 True — 단순 로그로 정리.
+
+**검증**:
+- `python3 -m py_compile harness/impl_loop.py` — OK.
+- AST 점검 — `_tdd_active` 라인 932: `attempt == 0 and depth in ('std', 'deep')` ✓ (test_command 의존 없음).
+
+**비변경 (의도)**:
+- simple depth — `run_simple` 가 별도 함수, test-engineer 자체가 스킵 (line 731-735). 변경 없음.
+- agent docs `agents/test-engineer.md` — TDD 모드 명세는 그대로. 호출 조건만 정정.
+
+**Linked**:
+- 선행 `HARNESS-CHG-20260428-14.1`/`14.2` — 같은 묶음.
+- 후속: C4 pr-reviewer scope / C5 no_changes 분리.
 
 **Exception**: —
 
