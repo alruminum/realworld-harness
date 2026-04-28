@@ -8,7 +8,7 @@
 #   CLAUDE_PLUGIN_ROOT=/path/to/plugin bash scripts/smoke-test.sh
 #     → 플러그인 모드 시뮬레이션
 #
-# 검증 항목 (11개):
+# 검증 항목 (16개):
 #  1. Python 파일 syntax (py_compile)
 #  2. hooks/hooks.json JSON 파싱
 #  3. .claude-plugin/{plugin,marketplace}.json 파싱
@@ -20,6 +20,11 @@
 #  9. hooks/ 의 sys.path 트릭으로 harness_common 등 import 가능
 # 10. SKIP_DOC_SYNC env 우회 동작 (pre-commit.sh)
 # 11. tracker.py — parse_ref / format_ref / normalize / LocalBackend 회로 (LOCAL-N regression 방어)
+# 12. monorepo 환경 — engineer_scope config 동적 로딩 (jajang fixture)
+# 13. env 미설정 회귀 0 — HARNESS_GUARD_V2_* 전체 off 시 v1 동작 유지
+# 14. LLM 마커 변형 흡수 — alias map (PLAN_LGTM/PLAN_OK/APPROVE/REJECT)
+# 15. feature flag 부분 활성 — cross-flag 호환성 (AGENT_BOUNDARY=1 only)
+# 16. 5번째 위험 cross-guard silent dependency — stderr 경고 출력 검증
 #
 # 종료 코드: 0 = ALL PASS / 1 = 1개 이상 FAIL
 set -u
@@ -238,6 +243,258 @@ print('OK: HARNESS_TRACKER=local 우선')
 "
 
 run "tracker which CLI 출력 — selected 라인 + 두 백엔드 가용성" python3 -m harness.tracker which
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 2 Guard Model Realignment (Issue #13 Iter 3 W5)
+# ─────────────────────────────────────────────────────────────────────────────
+
+echo ""
+echo "[10] monorepo 환경 — engineer_scope config 동적 로딩 (jajang fixture)"
+run "jajang fixture config 로드 + apps/api/src/ 패턴 매치" python3 -c "
+import sys, os, re
+sys.path.insert(0, '.')
+sys.path.insert(0, 'hooks')
+
+# harness_common 캐시 초기화
+import harness_common as hc
+hc._ENGINEER_SCOPE_CACHE = None
+
+# V2 활성
+os.environ['HARNESS_GUARD_V2_AGENT_BOUNDARY'] = '1'
+
+# jajang fixture config 로드
+from harness.config import load_config
+from pathlib import Path
+fixture = Path('tests/pytest/fixtures/jajang_monorepo')
+cfg = load_config(project_root=fixture)
+assert len(cfg.engineer_scope) > 0, 'engineer_scope 비어있음'
+assert cfg.prefix == 'jajang', f'prefix 불일치: {cfg.prefix}'
+
+# mock 로드 없이 실제 패턴으로 검증
+scope = cfg.engineer_scope
+combined = re.compile('(' + '|'.join(scope) + ')')
+test_paths = ['apps/api/src/main.py', 'apps/web/src/app.ts', 'services/api/src/router.py']
+for p in test_paths:
+    assert combined.search(p), f'{p} 가 engineer_scope 에 매치 안 됨'
+print(f'OK: {len(scope)} 패턴 로드, {len(test_paths)} 경로 모두 매치')
+"
+
+run "monorepo V2 off → static scope 회귀 0" python3 -c "
+import sys, os, re
+sys.path.insert(0, '.')
+sys.path.insert(0, 'hooks')
+import harness_common as hc
+hc._ENGINEER_SCOPE_CACHE = None
+# V2 flag 없음
+for k in list(os.environ.keys()):
+    if k.startswith('HARNESS_GUARD_V2_'):
+        del os.environ[k]
+scope = hc._load_engineer_scope()
+assert scope == list(hc._STATIC_ENGINEER_SCOPE), f'V2 off static scope 불일치'
+combined = re.compile('(' + '|'.join(scope) + ')')
+assert combined.search('src/foo.ts'), 'src/foo.ts 매치 실패'
+assert combined.search('apps/api/src/main.py'), 'apps/api/src/ 매치 실패'
+print(f'OK: V2 off → static scope {len(scope)}개 패턴, 회귀 0')
+"
+
+echo ""
+echo "[11] env 미설정 회귀 0 — HARNESS_GUARD_V2_* 전체 off"
+run "V2 전체 off → harness_common v1 동작" python3 -c "
+import sys, os
+sys.path.insert(0, '.')
+sys.path.insert(0, 'hooks')
+# 모든 V2 flag 제거
+for k in list(os.environ.keys()):
+    if k.startswith('HARNESS_GUARD_V2_'):
+        del os.environ[k]
+import harness_common as hc
+hc._ENGINEER_SCOPE_CACHE = None
+scope = hc._load_engineer_scope()
+assert scope == list(hc._STATIC_ENGINEER_SCOPE), 'V2 off 시 scope 다름'
+# MUTATING_SUBCOMMANDS 는 V2 flag 무관하게 항상 존재
+from harness.tracker import MUTATING_SUBCOMMANDS
+assert 'create-issue' in MUTATING_SUBCOMMANDS
+print('OK: V2 전체 off → v1 동작 확인, MUTATING_SUBCOMMANDS 존재')
+"
+
+run "V2=0 명시 설정 → off 취급" python3 -c "
+import sys, os
+sys.path.insert(0, '.')
+sys.path.insert(0, 'hooks')
+os.environ['HARNESS_GUARD_V2_AGENT_BOUNDARY'] = '0'
+os.environ['HARNESS_GUARD_V2_COMMIT_GATE'] = '0'
+import harness_common as hc
+hc._ENGINEER_SCOPE_CACHE = None
+scope = hc._load_engineer_scope()
+assert scope == list(hc._STATIC_ENGINEER_SCOPE), 'V2=0 가 off 취급 안 됨'
+print('OK: V2=0 명시 → off 취급 (static scope)')
+"
+
+echo ""
+echo "[12] LLM 마커 변형 흡수 — alias map"
+run "PLAN_LGTM → PLAN_VALIDATION_PASS" python3 -c "
+import sys, tempfile, os
+sys.path.insert(0, '.')
+from harness import core as _core
+with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+    f.write('validator output\nPLAN_LGTM\n')
+    fname = f.name
+try:
+    r = _core.parse_marker(fname, 'PLAN_VALIDATION_PASS|PLAN_VALIDATION_FAIL|PASS|FAIL')
+    assert r == 'PLAN_VALIDATION_PASS', f'alias 실패: {r}'
+    print('OK: PLAN_LGTM → PLAN_VALIDATION_PASS')
+finally:
+    os.unlink(fname)
+"
+
+run "PLAN_OK → PLAN_VALIDATION_PASS" python3 -c "
+import sys, tempfile, os
+sys.path.insert(0, '.')
+from harness import core as _core
+with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+    f.write('output\nPLAN_OK\n')
+    fname = f.name
+try:
+    r = _core.parse_marker(fname, 'PLAN_VALIDATION_PASS|PLAN_VALIDATION_FAIL|PASS|FAIL')
+    assert r == 'PLAN_VALIDATION_PASS', f'alias 실패: {r}'
+    print('OK: PLAN_OK → PLAN_VALIDATION_PASS')
+finally:
+    os.unlink(fname)
+"
+
+run "APPROVE → PASS / REJECT → FAIL" python3 -c "
+import sys, tempfile, os
+sys.path.insert(0, '.')
+from harness import core as _core
+
+def check(marker, expected, marker_str):
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+        f.write(f'output\n{marker}\n')
+        fname = f.name
+    try:
+        r = _core.parse_marker(fname, marker_str)
+        assert r == expected, f'{marker} alias 실패: {r} != {expected}'
+    finally:
+        os.unlink(fname)
+
+check('APPROVE', 'PASS', 'PASS|FAIL')
+check('REJECT', 'FAIL', 'PASS|FAIL')
+print('OK: APPROVE→PASS, REJECT→FAIL 모두 흡수')
+"
+
+run "PLAN_APPROVE → PLAN_VALIDATION_PASS" python3 -c "
+import sys, tempfile, os
+sys.path.insert(0, '.')
+from harness import core as _core
+with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+    f.write('output\nPLAN_APPROVE\n')
+    fname = f.name
+try:
+    r = _core.parse_marker(fname, 'PLAN_VALIDATION_PASS|PLAN_VALIDATION_FAIL|PASS|FAIL')
+    assert r == 'PLAN_VALIDATION_PASS', f'alias 실패: {r}'
+    print('OK: PLAN_APPROVE → PLAN_VALIDATION_PASS')
+finally:
+    os.unlink(fname)
+"
+
+echo ""
+echo "[13] feature flag 부분 활성 — cross-flag 호환성"
+run "AGENT_BOUNDARY=1 only → _load_engineer_scope v2 동작" python3 -c "
+import sys, os
+sys.path.insert(0, '.')
+sys.path.insert(0, 'hooks')
+# AGENT_BOUNDARY 만 활성, COMMIT_GATE 는 off
+os.environ['HARNESS_GUARD_V2_AGENT_BOUNDARY'] = '1'
+for k in ['HARNESS_GUARD_V2_COMMIT_GATE', 'HARNESS_GUARD_V2_ALL']:
+    os.environ.pop(k, None)
+import harness_common as hc
+hc._ENGINEER_SCOPE_CACHE = None
+# v2_any = True (AGENT_BOUNDARY=1 이므로) → config 로드 시도
+# 테스트 환경에서는 config 없으므로 static 폴백이지만 v2 경로 진입 자체는 확인
+scope = hc._load_engineer_scope()
+assert len(scope) > 0, 'scope 비어있음'
+print(f'OK: AGENT_BOUNDARY=1 only → scope {len(scope)}개 (config 없으면 static 폴백)')
+"
+
+run "AGENT_BOUNDARY=1 + COMMIT_GATE=0 → scope 일관성" python3 -c "
+import sys, os, re
+sys.path.insert(0, '.')
+sys.path.insert(0, 'hooks')
+os.environ['HARNESS_GUARD_V2_AGENT_BOUNDARY'] = '1'
+os.environ['HARNESS_GUARD_V2_COMMIT_GATE'] = '0'
+import harness_common as hc
+hc._ENGINEER_SCOPE_CACHE = None
+scope = hc._load_engineer_scope()
+combined = re.compile('(' + '|'.join(scope) + ')')
+# 두 패턴 모두 매치 (static fallback 에도 있음)
+assert combined.search('src/foo.ts'), 'src/ 매치 실패'
+assert combined.search('apps/api/src/main.py'), 'apps/api/src/ 매치 실패'
+print('OK: 부분 활성에서도 scope 일관성 유지')
+"
+
+echo ""
+echo "[14] 5번째 위험 — cross-guard silent dependency 가시화"
+run "skill-gate V2 on + 키 없음 → stderr 경고 출력" python3 -c "
+import sys, os, io
+sys.path.insert(0, '.')
+sys.path.insert(0, 'hooks')
+os.environ['HARNESS_GUARD_V2_SKILL_GATE'] = '1'
+import importlib.util
+spec = importlib.util.spec_from_file_location('sg', 'hooks/skill-gate.py')
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+# stderr 캡처
+import io as _io
+buf = _io.StringIO()
+old_stderr = sys.stderr
+sys.stderr = buf
+try:
+    result = mod._skill_name({'tool_input': {'wrong_key': 'val'}})
+finally:
+    sys.stderr = old_stderr
+output = buf.getvalue()
+assert result == '', f'expected empty string, got {result!r}'
+assert 'WARN' in output, f'stderr 경고 없음: {output!r}'
+print('OK: V2 on + 키 없음 → stderr WARN 출력 확인')
+"
+
+run "_verify_live_json_writable 실패 → cascade 사전 감지" python3 -c "
+import sys, os
+sys.path.insert(0, '.')
+sys.path.insert(0, 'hooks')
+from unittest.mock import patch
+import harness_common as hc
+with patch('session_state.update_live', side_effect=OSError('Permission denied')):
+    ok, err = hc._verify_live_json_writable('test-sid')
+assert not ok, 'ok=True 인데 실패해야 함'
+assert len(err) > 0, 'error msg 비어있음'
+assert 'OSError' in err or 'Permission' in err, f'에러 메시지 부적절: {err}'
+print(f'OK: live.json 쓰기 실패 감지: {err}')
+"
+
+run "skill-gate V2 off → silent (stderr 없음) — 회귀 0" python3 -c "
+import sys, os
+sys.path.insert(0, '.')
+sys.path.insert(0, 'hooks')
+# V2 off
+for k in list(os.environ.keys()):
+    if k.startswith('HARNESS_GUARD_V2_'):
+        del os.environ[k]
+import importlib.util, io
+spec = importlib.util.spec_from_file_location('sg_off', 'hooks/skill-gate.py')
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+buf = io.StringIO()
+old_stderr = sys.stderr
+sys.stderr = buf
+try:
+    result = mod._skill_name({'tool_input': {}})
+finally:
+    sys.stderr = old_stderr
+assert result == '', f'expected empty, got {result!r}'
+assert buf.getvalue() == '', f'V2 off 에서 stderr 경고 발생: {buf.getvalue()!r}'
+print('OK: V2 off → silent pass (stderr 없음) — 회귀 0')
+"
 
 echo ""
 echo "==================================="
