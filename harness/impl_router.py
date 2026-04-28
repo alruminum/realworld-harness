@@ -62,6 +62,8 @@ def _maybe_auto_spec_gap(
     fail_types = get_escalate_fail_types(state_dir, impl_file)
     print(f"[HARNESS] 동일 impl ESCALATE {count}회 누적 — architect SPEC_GAP 자동 호출")
     print(f"[HARNESS] 누적 fail_types: {fail_types}")
+    print(f"[HARNESS]   ↳ 직전 ESCALATE 가 *false failure* 였다고 판단되면(예: 마커 파서 "
+          f"mismatch 후 alias map 도입) `--force-retry` 플래그로 재실행하여 history 청소.")
     if run_logger:
         run_logger.log_event({
             "event": "auto_spec_gap_trigger",

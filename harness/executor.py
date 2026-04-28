@@ -30,7 +30,8 @@ def main() -> None:
     parser.add_argument("--context", default="", help="추가 컨텍스트")
     parser.add_argument("--branch-type", default="feat", help="브랜치 타입 (feat|fix)")
     parser.add_argument("--force-retry", action="store_true",
-                        help="직전 MERGE_CONFLICT cooldown 우회 (수동 해결 후 사용)")
+                        help="stale state 일괄 청소 후 재실행 — merge_cooldown + escalate_history "
+                             "(false failure 누적 시, 예: 마커 파서 mismatch 후 alias map 도입 등)")
 
     args = parser.parse_args()
 
@@ -99,13 +100,22 @@ def main() -> None:
             print("    2) 충돌 해결 또는 PR 수동 merge/close")
             print("    3) --force-retry 플래그로 재실행")
             sys.exit(1)
-    elif issue_num and args.force_retry:
+    elif args.force_retry:
+        # --force-retry: stale state 일괄 청소 (cooldown + escalate_history)
+        # cooldown 청소는 issue_num 필요. escalate_history 청소는 impl_file 필요.
         try:
-            from .core import clear_merge_cooldown
+            from .core import clear_merge_cooldown, clear_escalate_count
         except ImportError:
-            from core import clear_merge_cooldown
-        clear_merge_cooldown(Path.cwd(), prefix, issue_num)
-        print(f"[HARNESS] cooldown 우회: 이슈 {format_ref(issue_num)}")
+            from core import clear_merge_cooldown, clear_escalate_count
+        if issue_num:
+            clear_merge_cooldown(Path.cwd(), prefix, issue_num)
+            print(f"[HARNESS] cooldown 우회: 이슈 {format_ref(issue_num)}")
+        if args.impl_file:
+            # 동일 impl 의 누적 ESCALATE 기록 청소 → _maybe_auto_spec_gap 자동 발동 차단.
+            # 이전 ESCALATE 가 false failure 였던 경우(예: 마커 파서 mismatch) 재시도
+            # 시 historical fail count 무시하고 fresh start.
+            clear_escalate_count(state_dir, args.impl_file)
+            print(f"[HARNESS] escalate history 청소: {args.impl_file}")
 
     # Phase 3: 이슈 lock 획득 — 두 세션이 같은 이슈 동시 작업 방지
     if ss is not None and session_id and issue_num:
