@@ -19,10 +19,13 @@ Python 3.9+ stdlib only.
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # orchestration/policies.md §8 정의의 코드 표현
 TRIGGER_PATTERNS = [
@@ -100,7 +103,7 @@ def find_tests_exception(*sources: str) -> tuple[bool, str]:
     Returns:
         (found, reason_or_error)
         found=True 이면 reason은 사유 텍스트
-        found=False 이면 reason은 "" 또는 무효 사유 사유
+        found=False 이면 reason은 "" 또는 무효 사유 메시지
     """
     invalid_reason_msg = ""
     for source in sources:
@@ -118,7 +121,8 @@ def main() -> int:
     base = sys.argv[1] if len(sys.argv) >= 3 else ""
     head = sys.argv[2] if len(sys.argv) >= 3 else ""
 
-    repo_root = Path.cwd()
+    _env_root = os.environ.get("CHECK_TEST_SYNC_ROOT")
+    repo_root = Path(_env_root) if _env_root else REPO_ROOT
 
     changed = get_changed_files(base, head, repo_root)
     if not changed:

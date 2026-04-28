@@ -12,7 +12,9 @@ REQ-005c: 과거 commit body 에 Tests-Exception (현재 diff 에는 없음) →
 """
 from __future__ import annotations
 
+import os
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -43,16 +45,17 @@ def _commit_files(tmp: Path, files: dict[str, str], msg: str) -> str:
 class TestCheckTestSync(unittest.TestCase):
 
     def _run_script(self, tmp: Path, base: str, head: str) -> subprocess.CompletedProcess:
+        env = {**os.environ, "CHECK_TEST_SYNC_ROOT": str(tmp)}
         return subprocess.run(
             ["python3", str(SCRIPT), base, head],
             capture_output=True,
             text=True,
             cwd=tmp,
+            env=env,
         )
 
     def test_req_001_harness_only_no_tests_exit1(self):
         """REQ-001: harness/ 만 변경 + tests 0 → exit 1 + "tests/** 동반 누락" 메시지."""
-        import tempfile
         with tempfile.TemporaryDirectory() as tmp_str:
             tmp = Path(tmp_str)
             _init_git_repo(tmp)
@@ -67,7 +70,6 @@ class TestCheckTestSync(unittest.TestCase):
 
     def test_req_002_harness_with_tests_exit0(self):
         """REQ-002: harness/ + tests 동반 → exit 0."""
-        import tempfile
         with tempfile.TemporaryDirectory() as tmp_str:
             tmp = Path(tmp_str)
             _init_git_repo(tmp)
@@ -87,7 +89,6 @@ class TestCheckTestSync(unittest.TestCase):
 
     def test_req_003_hooks_only_no_tests_exit1(self):
         """REQ-003: hooks/ 만 변경 + tests 0 → exit 1."""
-        import tempfile
         with tempfile.TemporaryDirectory() as tmp_str:
             tmp = Path(tmp_str)
             _init_git_repo(tmp)
@@ -101,7 +102,6 @@ class TestCheckTestSync(unittest.TestCase):
 
     def test_req_004_docs_only_exit0(self):
         """REQ-004: docs/ 만 변경 (코드 X) → exit 0 ("게이트 대상 아님")."""
-        import tempfile
         with tempfile.TemporaryDirectory() as tmp_str:
             tmp = Path(tmp_str)
             _init_git_repo(tmp)
@@ -114,7 +114,6 @@ class TestCheckTestSync(unittest.TestCase):
 
     def test_req_005_tests_exception_in_commit_msg_exit0(self):
         """REQ-005: Tests-Exception 마커를 commit msg 에 명시 → exit 0."""
-        import tempfile
         with tempfile.TemporaryDirectory() as tmp_str:
             tmp = Path(tmp_str)
             _init_git_repo(tmp)
@@ -131,7 +130,6 @@ class TestCheckTestSync(unittest.TestCase):
 
     def test_req_005a_tests_exception_short_reason_exit1(self):
         """REQ-005a: Tests-Exception 사유 2자 → exit 1 + 사유 너무 짧음 메시지."""
-        import tempfile
         with tempfile.TemporaryDirectory() as tmp_str:
             tmp = Path(tmp_str)
             _init_git_repo(tmp)
@@ -149,7 +147,6 @@ class TestCheckTestSync(unittest.TestCase):
 
     def test_req_005b_tests_exception_empty_reason_exit1(self):
         """REQ-005b: Tests-Exception 빈 사유 → exit 1."""
-        import tempfile
         with tempfile.TemporaryDirectory() as tmp_str:
             tmp = Path(tmp_str)
             _init_git_repo(tmp)
@@ -166,7 +163,6 @@ class TestCheckTestSync(unittest.TestCase):
 
     def test_req_005c_tests_exception_in_old_commit_exit1(self):
         """REQ-005c: 과거 commit body 에 Tests-Exception (현재 diff 에는 없음) → exit 1 (재사용 hole 차단)."""
-        import tempfile
         with tempfile.TemporaryDirectory() as tmp_str:
             tmp = Path(tmp_str)
             _init_git_repo(tmp)
