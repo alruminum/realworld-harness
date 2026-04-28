@@ -33,6 +33,36 @@ except ImportError:
     from tracker import format_ref
 
 
+def save_plan_checkpoint(
+    state_dir: StateDir,
+    prefix: str,
+    prd_path: str,
+    issue_num: str | int = "",
+    ux_flow_doc: str = "",
+) -> bool:
+    """plan 루프 진행 체크포인트 저장. ux-architect 실패 등 중간 종료에서도 PRD 보존.
+
+    state_dir.path/{prefix}_plan_metadata.json 에 prd_path/issue_num/ux_flow_doc 기록.
+    ux_flow_doc 빈 문자열이면 키 자체를 생략 (partial checkpoint).
+
+    반환: True 성공 / False 쓰기 실패.
+    """
+    import json as _json
+    if not prd_path:
+        return False
+    meta = {"prd_path": prd_path, "issue_num": issue_num}
+    if ux_flow_doc:
+        meta["ux_flow_doc"] = ux_flow_doc
+    try:
+        (state_dir.path / f"{prefix}_plan_metadata.json").write_text(
+            _json.dumps(meta, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return True
+    except OSError:
+        return False
+
+
 def run_plan(
     issue_num: str | int,
     prefix: str,
@@ -207,16 +237,7 @@ def run_plan(
             print("=" * 60)
             run_logger.write_run_end("PLAN_REVIEW_CHANGES_REQUESTED", "", issue_num)
             # 메타데이터 저장 — 재호출 시 체크포인트 재사용 (ux_flow_doc은 아직 없음)
-            import json as _json
-            _plan_meta = {
-                "prd_path": prd_path,
-                "issue_num": issue_num,
-            }
-            try:
-                (state_dir.path / f"{prefix}_plan_metadata.json").write_text(
-                    _json.dumps(_plan_meta, ensure_ascii=False, indent=2), encoding="utf-8")
-            except OSError:
-                pass
+            save_plan_checkpoint(state_dir, prefix, prd_path, issue_num)
             return "PLAN_REVIEW_CHANGES_REQUESTED"
 
         if pr_marker != "PLAN_REVIEW_PASS":
@@ -232,6 +253,11 @@ def run_plan(
         hud.agent_done("plan-reviewer", int(time.time() - _pr_t0), _pr_cost)
         hud.log("plan-reviewer -> PLAN_REVIEW_PASS")
         print("[HARNESS] plan-reviewer -> PLAN_REVIEW_PASS")
+
+    # 체크포인트: plan-reviewer PASS 직후 partial metadata 저장 (ux_flow_doc 아직 없음).
+    # 이후 ux-architect/ux-validation 실패 시에도 PRD 체크포인트 보존 → 재실행 시
+    # planner 가 처음부터 안 돌고 ux 단계부터 재시도 가능.
+    save_plan_checkpoint(state_dir, prefix, prd_path, issue_num)
 
     # ================================================================
     # 3. UI 여부 판단 -> ux-architect 호출 or 스킵
@@ -398,19 +424,9 @@ def run_plan(
         kill_check(state_dir)
 
     # ================================================================
-    # 완료 -- 메타데이터 저장
+    # 완료 -- 메타데이터 저장 (full: prd_path + ux_flow_doc)
     # ================================================================
-    import json as _json
-    _plan_meta = {
-        "prd_path": prd_path,
-        "ux_flow_doc": ux_flow_doc,
-        "issue_num": issue_num,
-    }
-    try:
-        (state_dir.path / f"{prefix}_plan_metadata.json").write_text(
-            _json.dumps(_plan_meta, ensure_ascii=False, indent=2), encoding="utf-8")
-    except OSError:
-        pass
+    save_plan_checkpoint(state_dir, prefix, prd_path, issue_num, ux_flow_doc)
 
     # UI 없는 기능이면 UX_SKIP 반환
     if _skip_uxa and not ux_flow_doc:
