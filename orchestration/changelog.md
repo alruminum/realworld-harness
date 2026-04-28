@@ -58,6 +58,7 @@
 | `HARNESS-CHG-20260428-12` | 2026-04-28 | infra | [12.1] PLUGIN_ROOT `__file__` self-detect — env 미설정 시 `~/.claude` 폴백(post-migration 무효) 대신 `${plugin}/harness/core.py` 위치에서 root 추론. session_state import 안정화 (jajang 사례 — bash `${VAR:-...}` path 확장은 env export 아님) | — |
 | `HARNESS-CHG-20260428-13.1` | 2026-04-28 | docs | Phase 2 Iter 1 (W1+W3) — 가드 카탈로그 7개 (5개 W2 포함 / 2개 제외: issue-gate, plugin-write-guard) + spec §0 [invariant-shift] PR 토큰 정식 도입 + §3 I-1/I-2/I-7/I-9 보호 대상↔모델 분리 + architecture §5.6/§5.7 Layered Defense + §5.8 Staged Rollout + rationale 4섹션 + 5번째 위험 패턴 (Cross-guard Silent Dependency Chain) | — |
 | `HARNESS-CHG-20260428-13.2` | 2026-04-28 | infra | Phase 2 Iter 2 (W2+W4) — 5 가드 + 1 ralph fallback + Layered Defense 보강. config.py engineer_scope 필드 + tracker.MUTATING_SUBCOMMANDS SSOT + harness_common 4개 헬퍼(_load_engineer_scope/auto_gc_stale_flag/_verify_live_json_writable/_STATIC_ENGINEER_SCOPE) + session_state.update_live 쓰기 실패 stderr 표준화 + executor.py round-trip canary(always-on) + HARNESS_ACTIVE flag heartbeat + agent-boundary/commit-gate/agent-gate/skill-gate/skill-stop-protect V2 분기 + ralph-session-stop 3-layer fallback(HARNESS_GUARD_V2_RALPH_FALLBACK, default off). 모든 V2 env unset 시 v1 동작 100% 회귀 0. py_compile + smoke-test 57/57 PASS. | — |
+| `HARNESS-CHG-20260428-14.1` | 2026-04-28 | infra | MARKER_ALIASES 12개 변형 추가 — PLAN_VALIDATION(PLAN_VALIDATED/PLAN_VERIFIED/PLAN_PASS/PLAN_INVALID) + LIGHT_PLAN_READY(LIGHT_PLAN_DONE/LIGHT_PLAN_COMPLETE/LIGHT_PLAN_WRITTEN/BUGFIX_PLAN_READY) + READY_FOR_IMPL(MODULE_PLAN_READY/MODULE_PLAN_DONE/IMPL_PLAN_READY/IMPL_READY/PLAN_DONE/PLAN_WRITTEN/PLAN_COMPLETE). validator/architect 가 canonical 대신 자유 텍스트 변형 emit 시 SPEC_GAP_ESCALATE / PLAN_VALIDATION_ESCALATE 로 attempt 무위 소진되던 사례 차단. defense in depth 2nd layer 두꺼워짐. | — |
 
 ---
 
@@ -826,6 +827,36 @@ def _resolve_plugin_root() -> Path:
   - `hooks/agent-boundary.py` + `hooks/commit-gate.py`: unused `_les` import + dead branch 제거 — V2 분기 정리 과정에서 남은 죽은 코드 (MUST FIX 2).
   - `hooks/skill-stop-protect.py:121`: `clear_active_skill()` try/except 래핑 — `update_live` raise 변경에 따라 예외 전파로 `_log_event` 도달 못 하는 회귀 차단(권고).
 - impl 계획 정밀화: `docs/impl/13-guard-realignment.md` 를 architect (module-plan)이 줄번호 + 함수 시그니처 + 의사코드 수준으로 정밀화 (503 → 1099 line). 5번째 위험 실측 케이스 (Cross-guard Silent Dependency Chain) 를 W4 에 `ralph-session-stop` 3-layer fallback (`HARNESS_GUARD_V2_RALPH_FALLBACK`, default off) 으로 영구 fix 명시.
+
+**Exception**: —
+
+---
+
+## `HARNESS-CHG-20260428-14.1` — 2026-04-28 — MARKER_ALIASES 12개 변형 추가
+
+**Type**: infra (LLM 변형 흡수 — defense in depth 2nd layer)
+
+**Branch**: `harness/marker-aliases-expand`
+
+**Issue**: validator 가 PLAN_VALIDATION_PASS 대신 PLAN_VALIDATED / PLAN_PASS 같은 변형, architect (LIGHT_PLAN/MODULE_PLAN) 가 LIGHT_PLAN_READY / READY_FOR_IMPL 대신 LIGHT_PLAN_DONE / PLAN_DONE / MODULE_PLAN_READY 같은 변형 emit 시 `parse_marker` UNKNOWN → SPEC_GAP_ESCALATE / PLAN_VALIDATION_ESCALATE 로 attempt 통째로 무위 소진. 9.1 alias map 의 다음 layer.
+
+**범위 요약**:
+- `harness/core.py` `MARKER_ALIASES` 에 12개 variant → canonical 매핑 추가.
+  - PLAN_VALIDATION (4): `PLAN_VALIDATED` / `PLAN_VERIFIED` / `PLAN_PASS` → `PLAN_VALIDATION_PASS`, `PLAN_INVALID` → `PLAN_VALIDATION_FAIL`.
+  - LIGHT_PLAN_READY (4): `LIGHT_PLAN_DONE` / `LIGHT_PLAN_COMPLETE` / `LIGHT_PLAN_WRITTEN` / `BUGFIX_PLAN_READY`.
+  - READY_FOR_IMPL (7): `MODULE_PLAN_READY` / `MODULE_PLAN_DONE` / `IMPL_PLAN_READY` / `IMPL_READY` / `PLAN_DONE` / `PLAN_WRITTEN` / `PLAN_COMPLETE` (LIGHT_PLAN/MODULE_PLAN 두 모드 expected_set 모두에 READY_FOR_IMPL 포함되어 단일 매핑으로 양쪽 커버).
+
+**검증**:
+- `python3 -m py_compile harness/core.py` — OK.
+- alias smoke test 6/6 신규 변형 정상 매핑 (`PLAN_VALIDATED→PLAN_VALIDATION_PASS`, `LIGHT_PLAN_DONE→LIGHT_PLAN_READY`, `PLAN_DONE→READY_FOR_IMPL`, `MODULE_PLAN_READY→READY_FOR_IMPL`, `PLAN_INVALID→PLAN_VALIDATION_FAIL`, `PLAN_PASS→PLAN_VALIDATION_PASS`).
+
+**비변경 (의도)**:
+- agent docs (`agents/validator.md`, `agents/architect/light-plan.md`) — canonical 마커 명세는 1차 방어선으로 유지. alias map 은 fallback.
+- LGTM 단독 alias 미추가 (pr-reviewer 정식 마커이기도 해서 충돌).
+
+**Linked**:
+- 선행 `HARNESS-CHG-20260428-09.1` — alias map 1차 도입.
+- 후속 (이번 6건 묶음): C2 worktree untracked plan / C3 TDD 순서 / C4 pr-reviewer scope / C5 no_changes 분리.
 
 **Exception**: —
 
