@@ -37,6 +37,7 @@
 | `HARNESS-CHG-20260427-06` | 2026-04-27 | infra | v0.2.0 [6.1] setup-rwh.sh 플러그인 모드 분기 — CLAUDE_PLUGIN_ROOT set 시 글로벌 settings.json 훅 등록 skip (Phase 4 잔존 부채 #1 해결) | — |
 | `HARNESS-CHG-20260428-01` | 2026-04-28 | infra | [1.1] harness/tracker.py — 추적 ID 백엔드 추상화 (GitHub gh CLI / Local jsonl) + 단위 테스트 16/16 | — |
 | `HARNESS-CHG-20260428-01` | 2026-04-28 | spec  | [1.2] LOCAL-1 부트스트랩 + docs/impl/LOCAL-1-tracker-abstraction.md + rationale 4섹션 | — |
+| `HARNESS-CHG-20260428-01` | 2026-04-28 | infra | [1.3] hooks/agent-gate.py + harness-router.py 추적 ID 정규식 확장 (#N → #N\|LOCAL-N) | — |
 
 ---
 
@@ -221,7 +222,7 @@
 **Sub-commits**:
 - `[1.1]` `4c4d4f0` `harness/tracker.py` 신규 (+273) + `tests/pytest/test_tracker.py` 신규 (+145) + 단위 테스트 16/16
 - `[1.2]` (본 commit) `orchestration/issues/INDEX.jsonl` LOCAL-1 부트스트랩 + `docs/impl/LOCAL-1-tracker-abstraction.md` (+108) + `rationale.md` 4섹션 추가
-- `[1.3]` `hooks/agent-gate.py` 정규식 확장 (`#N` → `#N|LOCAL-N`)  *(예정)*
+- `[1.3]` `hooks/agent-gate.py:78` + `hooks/harness-router.py:68` 추적 ID 정규식 `#\d+` → `#\d+|LOCAL-\d+`. deny 메시지에 `python3 -m harness.tracker create-issue` 발급 안내 추가
 - `[1.4]` `agents/designer.md` Phase 0-0 — `gh issue create` → `python3 -m harness.tracker create-issue`  *(예정)*
 - `[1.5]` `agents/qa.md` MCP 미가용 폴백 안내  *(예정)*
 - `[1.6]` `docs/harness-spec.md §3 I-2` 표현 일반화 + `harness-architecture.md` tracker 섹션  *(예정)*
